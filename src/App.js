@@ -73,7 +73,8 @@ const App = () => {
   }
 
   const onPlayClick = (ev) => {
-    playerRef.current.start(visualizer2Ref.current.noteSequence)
+    if(visualizer2Ref.current)
+      playerRef.current.start(visualizer2Ref.current.noteSequence)
   }
 
   const onStopClick = (ev) => {
@@ -102,10 +103,6 @@ const App = () => {
   return (
     <div className="App">
       <h1>Musica Asistida por Humano</h1>
-      <h2>Basic usage</h2>
-      <p> Once you create an <code>mm.Recorder</code>, it will connect to any MIDI inputs
-        visible.
-      </p>
       <section>
         <button onClick={onPlayClick} disabled={playerRef.current.isPlaying()}>{playerRef.current.isPlaying()?'...':'Play'}</button>
         <button onClick={onRecordClick} disabled={recording || !ready}>{recording?'...':'Record'}</button>
