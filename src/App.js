@@ -3,6 +3,7 @@ import './App.css'
 import DRUM_SEQS from './drumSeq'
 import {Recorder, Player, PianoRollCanvasVisualizer} from "@magenta/music/node/core"
 import Tone from 'tone'
+import Codepen from './Codepen'
 
 import gWorker from './generate.worker.js'
 
@@ -123,6 +124,7 @@ const App = () => {
           <canvas ref={canvas2Ref}></canvas>
         </div>
       </section>
+      <Codepen />
 
     </div>
   )

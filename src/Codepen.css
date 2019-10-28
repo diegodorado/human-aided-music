@@ -1,0 +1,197 @@
+html,
+body,
+.app {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+
+  background-color: #111;
+  color: white;
+}
+
+.progress {
+  max-width: 30%;
+  margin: 45vh auto 55vh auto;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  background: linear-gradient(to right, #010305, #131516);
+}
+
+.sequencer,
+.controls {
+  width: 80vw;
+}
+.controls {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+}
+.control {
+  text-align: center;
+}
+.control input {
+  margin-bottom: 20px;
+}
+.select-wrapper span.caret {
+  color: inherit; /* Override materialize.css black */
+}
+.select-wrapper input.select-dropdown {
+  margin-bottom: 10px;
+}
+.input-field {
+  margin-top: 0;
+}
+input[type='range'] {
+  border: 0;
+}
+input[type='range'] + .thumb {
+  background-color: #2196f3;
+}
+input[type='range']::-webkit-slider-thumb {
+  background-color: #2196f3;
+}
+input[type='range']::-moz-range-thumb {
+  background-color: #2196f3;
+}
+input[type='range']::-ms-thumb {
+  background-color: #2196f3;
+}
+.control .share {
+  margin-top: 10px;
+}
+.midi-output,
+.midi-clock-input,
+.select-wrapper {
+  max-width: 200px;
+  margin: 0 auto;
+}
+.select-wrapper input {
+  color: white;
+}
+.sequencer {
+  position: relative;
+  height: 70vh;
+  margin: 20px 0;
+  display: flex;
+  flex-direction: row;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+.sequencer .legend {
+  flex: 0.75;
+  display: flex;
+  flex-direction: column;
+}
+.drum-class {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 2.5px;
+
+  font-size: 12px;
+  color: #999;
+}
+.sequencer .steps {
+  flex: 9;
+  display: flex;
+  flex-direction: row;
+}
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  transform-style: preserve-3d;
+}
+.steps {
+  transform-style: preserve-3d;
+}
+.gutter {
+  width: 5px;
+}
+.gutter.seed-marker {
+  background-color: #aaa;
+  margin: 0 10px;
+  cursor: move;
+}
+.gutter.seed-marker:hover {
+  background-color: white;
+}
+.cell {
+  margin: 2.5px 0;
+  background-color: rgba(100, 100, 100, 0.1);
+  border: 1px solid rgba(100, 100, 100, 0.2);
+  border-radius: 3px;
+  z-index: 0;
+  transition: background-color 0.3s ease;
+}
+
+.cell:hover {
+  background-color: rgba(100, 100, 100, 0.5);
+}
+.step:not(.regenerating) .cell.on {
+  background-color: #64b5f6;
+  opacity: 1;
+}
+
+.step.seed .cell.on {
+  background-color: #e91e63;
+}
+
+.regenerate {
+  position: absolute;
+  visibility: hidden;
+  font-size: 30px;
+  line-height: 56px;
+}
+
+.kick {
+  flex: 2;
+  margin-bottom: 10px;
+}
+.snare {
+  flex: 1;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.hi-hat-closed {
+  flex: 1;
+  margin-top: 10px;
+}
+.hi-hat-open {
+  flex: 1;
+  margin-bottom: 10px;
+}
+.tom-low {
+  flex: 1;
+  margin-top: 10px;
+}
+.tom-mid {
+  flex: 1;
+}
+.tom-high {
+  flex: 1;
+  margin-bottom: 10px;
+}
+.clap {
+  flex: 1;
+  margin-top: 10px;
+}
+.rim {
+  flex: 1;
+}
+
+.info {
+  max-width: 50%;
+  margin: 100px auto;
+  text-align: center;
+}
+.info p {
+  margin-top: 50px;
+}
