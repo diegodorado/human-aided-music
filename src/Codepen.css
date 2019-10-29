@@ -1,18 +1,7 @@
 html,
 body,
-.app {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-
-  background-color: #111;
-  color: white;
-}
-
-.progress {
-  max-width: 30%;
-  margin: 45vh auto 55vh auto;
+.App {
+  background: linear-gradient(to right, #010305, #131516);
 }
 
 .app {
@@ -20,8 +9,6 @@ body,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-
-  background: linear-gradient(to right, #010305, #131516);
 }
 
 .sequencer,
@@ -35,6 +22,7 @@ body,
 }
 .control {
   text-align: center;
+  max-width: 10vw;
 }
 .control input {
   margin-bottom: 20px;
@@ -67,6 +55,7 @@ input[type='range']::-ms-thumb {
   margin-top: 10px;
 }
 .midi-output,
+.midi-clock-output,
 .midi-clock-input,
 .select-wrapper {
   max-width: 200px;
@@ -94,7 +83,6 @@ input[type='range']::-ms-thumb {
   align-items: center;
   justify-content: flex-start;
   margin: 2.5px;
-
   font-size: 12px;
   color: #999;
 }
@@ -108,20 +96,10 @@ input[type='range']::-ms-thumb {
   display: flex;
   flex-direction: column;
   transform-style: preserve-3d;
+  margin: 0 3px;
 }
 .steps {
   transform-style: preserve-3d;
-}
-.gutter {
-  width: 5px;
-}
-.gutter.seed-marker {
-  background-color: #aaa;
-  margin: 0 10px;
-  cursor: move;
-}
-.gutter.seed-marker:hover {
-  background-color: white;
 }
 .cell {
   margin: 2.5px 0;
@@ -144,12 +122,6 @@ input[type='range']::-ms-thumb {
   background-color: #e91e63;
 }
 
-.regenerate {
-  position: absolute;
-  visibility: hidden;
-  font-size: 30px;
-  line-height: 56px;
-}
 
 .kick {
   flex: 2;
@@ -194,4 +166,8 @@ input[type='range']::-ms-thumb {
 }
 .info p {
   margin-top: 50px;
+}
+
+.info select{
+  display: block;
 }

@@ -87,32 +87,14 @@ const App = () => {
     }
   }
 
-  const onTempoChange = (ev) => {
-    const t = parseFloat(ev.target.value)
-    setTempo(t)
-    recoderRef.current.setTempo(t)
-    playerRef.current.setTempo(t)
-  }
-
-
-  const onPlayClickChange = (ev) => {
-    const c = ev.target.checked
-    setPlayClick(c)
-    recoderRef.current.enablePlayClick(c)
-  }
 
   return (
     <div className="App">
-      <h1>Musica Asistida por Humano</h1>
+      <Codepen />
       <section>
         <button onClick={onPlayClick} disabled={playerRef.current.isPlaying()}>{playerRef.current.isPlaying()?'...':'Play'}</button>
         <button onClick={onRecordClick} disabled={recording || !ready}>{recording?'...':'Record'}</button>
         <button onClick={onStopClick} disabled={!recording}>Stop</button>
-        <label><b>Play click</b> <input type="checkbox" value={playClick} onChange={onPlayClickChange} /></label>
-        <label><b>loop</b> <input type="checkbox" value={loopRef.current} onChange={ev => loopRef.current = ev.target.checked} /></label>
-        <b>Tempo:</b>
-        <input type="range" min="20" max="240" value={tempo} step="1" onChange={onTempoChange} />
-        <output>{tempo}</output>
       </section>
       <section>
         <div className="visualizer-container">
@@ -124,8 +106,6 @@ const App = () => {
           <canvas ref={canvas2Ref}></canvas>
         </div>
       </section>
-      <Codepen />
-
     </div>
   )
 }

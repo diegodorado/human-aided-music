@@ -1,10 +1,11 @@
 import React, {useState, useEffect, useRef} from 'react'
 import './Codepen.css'
-
 import _ from 'lodash'
-import {MusicRNN} from "@magenta/music/node/music_rnn"
 import {sequences} from "@magenta/music/node/core"
 import Tone from 'tone'
+import rgWorker from './regenerate.worker.js'
+
+const worker = new rgWorker()
 
 //hacky workaround not having WebMidi as an es6 module
 let WebMidi = window.WebMidi
@@ -19,20 +20,16 @@ const DRUM_CLASSES = [
   'Tom high',
   'Clap',
   'Rim'
-];
+]
 const TIME_HUMANIZATION = 0.01;
+const sampleBaseUrl = 'https://s3-us-west-2.amazonaws.com/s.cdpn.io/969699'
 
-
-
-let sampleBaseUrl = 'https://s3-us-west-2.amazonaws.com/s.cdpn.io/969699';
-
-let reverb = new Tone.Convolver(
+const reverb = new Tone.Convolver(
   `${sampleBaseUrl}/small-drum-room.wav`
-).toMaster();
-reverb.wet.value = 0.35;
-
-let snarePanner = new Tone.Panner().connect(reverb);
-new Tone.LFO(0.13, -0.25, 0.25).connect(snarePanner.pan).start();
+).toMaster()
+reverb.wet.value = 0.35
+const snarePanner = new Tone.Panner().connect(reverb)
+new Tone.LFO(0.13, -0.25, 0.25).connect(snarePanner.pan).start()
 
 let drumKit = [
   new Tone.Players({
@@ -82,73 +79,8 @@ let drumKit = [
   }).connect(new Tone.Panner(0.5).connect(reverb))
 ];
 let midiDrums = [36, 38, 42, 46, 41, 43, 45, 49, 51];
-let reverseMidiMapping = new Map([
-  [36, 0],
-  [35, 0],
-  [38, 1],
-  [27, 1],
-  [28, 1],
-  [31, 1],
-  [32, 1],
-  [33, 1],
-  [34, 1],
-  [37, 1],
-  [39, 1],
-  [40, 1],
-  [56, 1],
-  [65, 1],
-  [66, 1],
-  [75, 1],
-  [85, 1],
-  [42, 2],
-  [44, 2],
-  [54, 2],
-  [68, 2],
-  [69, 2],
-  [70, 2],
-  [71, 2],
-  [73, 2],
-  [78, 2],
-  [80, 2],
-  [46, 3],
-  [67, 3],
-  [72, 3],
-  [74, 3],
-  [79, 3],
-  [81, 3],
-  [45, 4],
-  [29, 4],
-  [41, 4],
-  [61, 4],
-  [64, 4],
-  [84, 4],
-  [48, 5],
-  [47, 5],
-  [60, 5],
-  [63, 5],
-  [77, 5],
-  [86, 5],
-  [87, 5],
-  [50, 6],
-  [30, 6],
-  [43, 6],
-  [62, 6],
-  [76, 6],
-  [83, 6],
-  [49, 7],
-  [55, 7],
-  [57, 7],
-  [58, 7],
-  [51, 8],
-  [52, 8],
-  [53, 8],
-  [59, 8],
-  [82, 8]
-]);
 
-let temperature = 1.0;
-
-let outputs = {
+const outputs = {
   internal: {
     play: (drumIdx, velocity, time) => {
       drumKit[drumIdx].get(velocity).start(time);
@@ -156,504 +88,331 @@ let outputs = {
   }
 }
 
-let rnn = new MusicRNN(
-  'https://storage.googleapis.com/download.magenta.tensorflow.org/tfjs_checkpoints/music_rnn/drum_kit_rnn'
-)
+const getStepVelocity = (step) =>{
+  if (step % 4 === 0)
+    return 'high'
+  else if (step % 2 === 0)
+    return 'med'
+  else
+    return 'low'
+}
+
+function humanizeTime(time) {
+  return time + (Math.random()-0.5) * TIME_HUMANIZATION;
+}
 
 Promise.all([
-  rnn.initialize(),
   new Promise(res => Tone.Buffer.on('load', res))
 ]).then(([vars]) => {
-  let state = {
-    patternLength: 32,
-    seedLength: 4,
-    swing: 0.55,
-    pattern: [[0], [], [2]].concat(_.times(32, i => [])),
-    tempo: 120
-  };
-  let stepEls = [],
-    hasBeenStarted = false,
-    oneEighth = Tone.Time('8n').toSeconds(),
+
+});
+
+
+let hasBeenStarted = false,
+currentSchedulerId,
+stepCounter;
+
+const Codepen = () => {
+
+  let oneEighth = Tone.Time('8n').toSeconds(),
     activeOutput = 'internal',
     midiClockSender = null,
     midiClockStartSent = false,
-    activeClockInput = 'none',
-    currentSchedulerId,
-    stepCounter;
+    activeClockInput = 'none'
 
-  function generatePattern(seed, length) {
-    let seedSeq = toNoteSequence(seed);
-    return rnn
-      .continueSequence(seedSeq, length, temperature)
-      .then(r => seed.concat(fromNoteSequence(r, length)));
+  const [tempo, setTempo] = useState(120)
+  const [pattern, setPattern] = useState([[0], [1], [2]].concat(_.times(29, i => [])))
+  const [patternLength, setPatternLength] = useState(32)
+  const [seedLength, setSeedLength] = useState(4)
+  const [swing, setSwing] = useState(0.55)
+  const [temperature, setTemperature] = useState(1.0)
+  const [playing, setPlaying] = useState(false)
+
+  const patternRef = useRef(pattern)
+  patternRef.current = pattern
+  const swingRef = useRef(swing)
+  swingRef.current = swing
+
+
+  const onPatternLengthChange = (ev) => {
+    const l = parseFloat(ev.target.value)
+    setPatternLength(l)
   }
 
-  function getStepVelocity(step) {
-    if (step % 4 === 0) {
-      return 'high';
-    } else if (step % 2 === 0) {
-      return 'med';
-    } else {
-      return 'low';
-    }
+  const onSeedLengthChange = (ev) => {
+    const l = parseFloat(ev.target.value)
+    setSeedLength(l)
   }
 
-  function humanizeTime(time) {
-    return time - TIME_HUMANIZATION / 2 + Math.random() * TIME_HUMANIZATION;
+  const onTempoChange = (ev) => {
+    const t = parseFloat(ev.target.value)
+    setTempo(t)
+    Tone.Transport.bpm.value = t
+    oneEighth = Tone.Time('8n').toSeconds()
+
   }
 
-  function tick(time = Tone.now() - Tone.context.lookAhead) {
-    if (_.isNumber(stepCounter) && state.pattern) {
-      stepCounter++;
-      if (midiClockSender) midiClockSender(time, stepCounter);
+  const onSwingChange = (ev) => {
+    const s = parseFloat(ev.target.value)
+    setSwing(s)
+  }
 
-      let stepIdx = stepCounter % state.pattern.length;
-      let isSwung = stepIdx % 2 !== 0;
-      if (isSwung) {
-        time += (state.swing - 0.5) * oneEighth;
-      }
-      let velocity = getStepVelocity(stepIdx);
-      let drums = state.pattern[stepIdx];
-      drums.forEach(d => {
-        let humanizedTime = stepIdx === 0 ? time : humanizeTime(time);
-        outputs[activeOutput].play(d, velocity, humanizedTime);
-        visualizePlay(humanizedTime, stepIdx, d);
-      });
-    }
+  const onTemperatureChange = (ev) => {
+    const t = parseFloat(ev.target.value)
+    setTemperature(t)
   }
 
   function startPattern() {
     stepCounter = -1;
     midiClockStartSent = false;
-    updatePlayPauseIcons();
   }
 
   function stopPattern() {
     stepCounter = null;
-    updatePlayPauseIcons();
   }
 
-  function visualizePlay(time, stepIdx, drumIdx) {
+
+  let regenerating = false
+
+  // todo: use css3
+  const visualizePlay = (time, stepIdx, drumIdx) =>{
     Tone.Draw.schedule(() => {
-      if (!stepEls[stepIdx]) return;
+      const sel = `.step:nth-child(${stepIdx+1}) .cell.on:nth-child(${drumIdx+1})`
       let animTime = oneEighth * 4 * 1000;
-      let cellEl = stepEls[stepIdx].cellEls[drumIdx];
-      if (cellEl.classList.contains('on')) {
-        let baseColor = stepIdx < state.seedLength ? '#e91e63' : '#64b5f6';
-        cellEl.animate(
+      const el = document.querySelector(sel)
+      if(el){
+        el.animate(
           [
-            {
-              transform: 'translateZ(-100px)',
-              backgroundColor: '#fad1df'
-            },
-            {
-              transform: 'translateZ(50px)',
-              offset: 0.7
-            },
-            { transform: 'translateZ(0)', backgroundColor: baseColor }
+            {transform: 'translateZ(-100px)',filter: 'grayscale(1)'},
+            {transform: 'translateZ(50px)',offset: 0.7},
+            { transform: 'translateZ(0)', filter: 'grayscale(0)'}
           ],
           { duration: animTime, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
-        );
+        )
       }
     }, time);
   }
 
-  function renderPattern(regenerating = false) {
-    let seqEl = document.querySelector('.sequencer .steps');
-    while (stepEls.length > state.pattern.length) {
-      let { stepEl, gutterEl } = stepEls.pop();
-      stepEl.remove();
-      if (gutterEl) gutterEl.remove();
-    }
-    for (let stepIdx = 0; stepIdx < state.pattern.length; stepIdx++) {
-      let step = state.pattern[stepIdx];
-      let stepEl, gutterEl, cellEls;
-      if (stepEls[stepIdx]) {
-        stepEl = stepEls[stepIdx].stepEl;
-        gutterEl = stepEls[stepIdx].gutterEl;
-        cellEls = stepEls[stepIdx].cellEls;
-      } else {
-        stepEl = document.createElement('div');
-        stepEl.classList.add('step');
-        stepEl.dataset.stepIdx = stepIdx;
-        seqEl.appendChild(stepEl);
-        cellEls = [];
-      }
-
-      stepEl.style.flex = stepIdx % 2 === 0 ? state.swing : 1 - state.swing;
-
-      if (!gutterEl && stepIdx < state.pattern.length - 1) {
-        gutterEl = document.createElement('div');
-        gutterEl.classList.add('gutter');
-        seqEl.insertBefore(gutterEl, stepEl.nextSibling);
-      } else if (gutterEl && stepIdx >= state.pattern.length) {
-        gutterEl.remove();
-        gutterEl = null;
-      }
-
-      if (gutterEl && stepIdx === state.seedLength - 1) {
-        gutterEl.classList.add('seed-marker');
-      } else if (gutterEl) {
-        gutterEl.classList.remove('seed-marker');
-      }
-
-      for (let cellIdx = 0; cellIdx < DRUM_CLASSES.length; cellIdx++) {
-        let cellEl;
-        if (cellEls[cellIdx]) {
-          cellEl = cellEls[cellIdx];
-        } else {
-          cellEl = document.createElement('div');
-          cellEl.classList.add('cell');
-          cellEl.classList.add(_.kebabCase(DRUM_CLASSES[cellIdx]));
-          cellEl.dataset.stepIdx = stepIdx;
-          cellEl.dataset.cellIdx = cellIdx;
-          stepEl.appendChild(cellEl);
-          cellEls[cellIdx] = cellEl;
-        }
-        if (step.indexOf(cellIdx) >= 0) {
-          cellEl.classList.add('on');
-        } else {
-          cellEl.classList.remove('on');
-        }
-      }
-      stepEls[stepIdx] = { stepEl, gutterEl, cellEls };
-
-      let stagger = stepIdx * (300 / (state.patternLength - state.seedLength));
-      setTimeout(() => {
-        if (stepIdx < state.seedLength) {
-          stepEl.classList.add('seed');
-        } else {
-          stepEl.classList.remove('seed');
-          if (regenerating) {
-            stepEl.classList.add('regenerating');
-          } else {
-            stepEl.classList.remove('regenerating');
-          }
-        }
-      }, stagger);
-    }
-
-    setTimeout(repositionRegenerateButton, 0);
-  }
-
-  function repositionRegenerateButton() {
-    let regenButton = document.querySelector('.regenerate');
-    let sequencerEl = document.querySelector('.sequencer');
-    let seedMarkerEl = document.querySelector('.gutter.seed-marker');
-    let regenLeft =
-      sequencerEl.offsetLeft +
-      seedMarkerEl.offsetLeft +
-      seedMarkerEl.offsetWidth / 2 -
-      regenButton.offsetWidth / 2;
-    let regenTop =
-      sequencerEl.offsetTop +
-      seedMarkerEl.offsetTop +
-      seedMarkerEl.offsetHeight / 2 -
-      regenButton.offsetHeight / 2;
-    regenButton.style.left = `${regenLeft}px`;
-    regenButton.style.top = `${regenTop}px`;
-    regenButton.style.visibility = 'visible';
-  }
-
-  function regenerate() {
-    let seed = _.take(state.pattern, state.seedLength);
-    renderPattern(true);
-    return generatePattern(seed, state.patternLength - seed.length).then(
-      result => {
-        state.pattern = result;
-        onPatternUpdated();
-      }
-    );
-  }
-
-  function onPatternUpdated() {
-    stopPattern();
-    renderPattern();
-  }
-
-  function toggleStep(cellEl) {
-    if (state.pattern && cellEl.classList.contains('cell')) {
-      let stepIdx = +cellEl.dataset.stepIdx;
-      let cellIdx = +cellEl.dataset.cellIdx;
-      let isOn = cellEl.classList.contains('on');
-      if (isOn) {
-        _.pull(state.pattern[stepIdx], cellIdx);
-        cellEl.classList.remove('on');
-      } else {
-        state.pattern[stepIdx].push(cellIdx);
-        cellEl.classList.add('on');
-      }
-    }
-  }
-
-  function toNoteSequence(pattern) {
-    return sequences.quantizeNoteSequence(
-      {
-        ticksPerQuarter: 220,
-        totalTime: pattern.length / 2,
-        timeSignatures: [
-          {
-            time: 0,
-            numerator: 4,
-            denominator: 4
-          }
-        ],
-        tempos: [
-          {
-            time: 0,
-            qpm: 120
-          }
-        ],
-        notes: _.flatMap(pattern, (step, index) =>
-          step.map(d => ({
-            pitch: midiDrums[d],
-            startTime: index * 0.5,
-            endTime: (index + 1) * 0.5
-          }))
-        )
-      },
-      1
-    );
-  }
-
-  function fromNoteSequence(seq, patternLength) {
-    let res = _.times(patternLength, () => []);
-    for (let { pitch, quantizedStartStep } of seq.notes) {
-      res[quantizedStartStep].push(reverseMidiMapping.get(pitch));
-    }
-    return res;
-  }
-
-  function setSwing(newSwing) {
-    state.swing = newSwing;
-    renderPattern();
-  }
-
-  function updatePlayPauseIcons() {
+  const tick = (time = Tone.now() - Tone.context.lookAhead) =>{
     if (_.isNumber(stepCounter)) {
-      document.querySelector('.playpause .pause-icon').style.display = null;
-      document.querySelector('.playpause .play-icon').style.display = 'none';
-    } else {
-      document.querySelector('.playpause .play-icon').style.display = null;
-      document.querySelector('.playpause .pause-icon').style.display = 'none';
+      stepCounter++
+
+      if (midiClockSender) midiClockSender(time, stepCounter)
+
+      let stepIdx = stepCounter % patternRef.current.length
+      let isSwung = stepIdx % 2 !== 0
+      if (isSwung) {
+        time += (swingRef.current - 0.5) * oneEighth
+      }
+      let velocity = getStepVelocity(stepIdx)
+      let drums = patternRef.current[stepIdx]
+
+      drums.forEach(d => {
+        let humanizedTime = stepIdx === 0 ? time : humanizeTime(time)
+        outputs[activeOutput].play(d, velocity, humanizedTime)
+        visualizePlay(humanizedTime, stepIdx, d)
+      })
     }
   }
 
-  WebMidi.enable(err => {
-    if (err) {
-      console.error('WebMidi could not be enabled', err);
-      return;
-    }
-    document
-      .querySelectorAll('.webmidi-enabled')
-      .forEach(e => (e.style.display = 'block'));
-    let outputSelector = document.querySelector('.midi-output');
-    let clockOutputSelector = document.querySelector('.midi-clock-output');
-    let clockInputSelector = document.querySelector('.midi-clock-input');
-    let activeClockOutput,
-      midiClockCounter = 0,
-      eighthsCounter = 0,
-      lastEighthAt;
 
-    function onDevicesChanged() {
-      while (outputSelector.firstChild) {
-        outputSelector.firstChild.remove();
-      }
-      let internalOption = document.createElement('option');
-      internalOption.value = 'internal';
-      internalOption.innerText = 'Internal drumkit';
-      outputSelector.appendChild(internalOption);
-      for (let output of WebMidi.outputs) {
-        let option = document.createElement('option');
-        option.value = output.id;
-        option.innerText = output.name;
-        outputSelector.appendChild(option);
-      }
-      //$(outputSelector).formSelect();
-      onActiveOutputChange('internal');
+  useEffect(()=>{
+    worker.addEventListener('message', (ev) => {
+      setPattern(ev.data)
+    })
+  },[])
 
-      while (clockOutputSelector.firstChild) {
-        clockOutputSelector.firstChild.remove();
-      }
-      let noneOption = document.createElement('option');
-      noneOption.value = 'none';
-      noneOption.innerText = 'Not sending';
-      clockOutputSelector.appendChild(noneOption);
-      for (let output of WebMidi.outputs) {
-        let option = document.createElement('option');
-        option.value = output.id;
-        option.innerText = output.name;
-        clockOutputSelector.appendChild(option);
-      }
-      //$(clockOutputSelector).formSelect();
-      onActiveClockOutputChange('none');
+  useEffect(()=>{
 
-      while (clockInputSelector.firstChild) {
-        clockInputSelector.firstChild.remove();
-      }
-      noneOption = document.createElement('option');
-      noneOption.value = 'none';
-      noneOption.innerText = 'None (using internal clock)';
-      clockInputSelector.appendChild(noneOption);
-      for (let input of WebMidi.inputs) {
-        let option = document.createElement('option');
-        option.value = input.id;
-        option.innerText = input.name;
-        clockInputSelector.appendChild(option);
-      }
-      //$(clockInputSelector).formSelect();
-      onActiveClockInputChange('none');
-    }
 
-    function onActiveOutputChange(id) {
-      if (activeOutput !== 'internal') {
-        outputs[activeOutput] = null;
+
+    WebMidi.enable(err => {
+      if (err) {
+        console.error('WebMidi could not be enabled', err);
+        return;
       }
-      activeOutput = id;
-      if (activeOutput !== 'internal') {
-        let output = WebMidi.getOutputById(id);
-        outputs[id] = {
-          play: (drumIdx, velo, time) => {
-            let delay = (time - Tone.now()) * 1000;
-            let duration = (oneEighth / 2) * 1000;
-            let velocity = { high: 1, med: 0.75, low: 0.5 };
-            output.playNote(midiDrums[drumIdx], 1, {
-              time: delay > 0 ? `+${delay}` : WebMidi.now,
-              velocity,
-              duration
-            });
+      let outputSelector = document.querySelector('.midi-output');
+      let clockOutputSelector = document.querySelector('.midi-clock-output');
+      let clockInputSelector = document.querySelector('.midi-clock-input');
+      let activeClockOutput,
+        midiClockCounter = 0,
+        eighthsCounter = 0,
+        lastEighthAt;
+
+      function onDevicesChanged() {
+        while (outputSelector.firstChild) {
+          outputSelector.firstChild.remove();
+        }
+        let internalOption = document.createElement('option');
+        internalOption.value = 'internal';
+        internalOption.innerText = 'Internal drumkit';
+        outputSelector.appendChild(internalOption);
+        for (let output of WebMidi.outputs) {
+          let option = document.createElement('option');
+          option.value = output.id;
+          option.innerText = output.name;
+          outputSelector.appendChild(option);
+        }
+        //$(outputSelector).formSelect();
+        onActiveOutputChange('internal');
+
+        while (clockOutputSelector.firstChild) {
+          clockOutputSelector.firstChild.remove();
+        }
+        let noneOption = document.createElement('option');
+        noneOption.value = 'none';
+        noneOption.innerText = 'Not sending';
+        clockOutputSelector.appendChild(noneOption);
+        for (let output of WebMidi.outputs) {
+          let option = document.createElement('option');
+          option.value = output.id;
+          option.innerText = output.name;
+          clockOutputSelector.appendChild(option);
+        }
+        //$(clockOutputSelector).formSelect();
+        onActiveClockOutputChange('none');
+
+        while (clockInputSelector.firstChild) {
+          clockInputSelector.firstChild.remove();
+        }
+        noneOption = document.createElement('option');
+        noneOption.value = 'none';
+        noneOption.innerText = 'None (using internal clock)';
+        clockInputSelector.appendChild(noneOption);
+        for (let input of WebMidi.inputs) {
+          let option = document.createElement('option');
+          option.value = input.id;
+          option.innerText = input.name;
+          clockInputSelector.appendChild(option);
+        }
+        //$(clockInputSelector).formSelect();
+        onActiveClockInputChange('none');
+      }
+
+      function onActiveOutputChange(id) {
+        if (activeOutput !== 'internal') {
+          outputs[activeOutput] = null;
+        }
+        activeOutput = id;
+        if (activeOutput !== 'internal') {
+          let output = WebMidi.getOutputById(id);
+          outputs[id] = {
+            play: (drumIdx, velo, time) => {
+              let delay = (time - Tone.now()) * 1000;
+              let duration = (oneEighth / 2) * 1000;
+              let velocity = { high: 1, med: 0.75, low: 0.5 };
+              output.playNote(midiDrums[drumIdx], 1, {
+                time: delay > 0 ? `+${delay}` : WebMidi.now,
+                velocity,
+                duration
+              });
+            }
+          };
+        }
+        for (let option of Array.from(outputSelector.children)) {
+          option.selected = option.value === id;
+        }
+      }
+
+      function onActiveClockOutputChange(id) {
+        if (activeClockOutput !== 'none') {
+          stopSendingMidiClock();
+        }
+        activeClockOutput = id;
+        if (activeClockOutput !== 'none') {
+          startSendingMidiClock();
+        }
+        for (let option of Array.from(clockOutputSelector.children)) {
+          option.selected = option.value === id;
+        }
+      }
+
+      function startSendingMidiClock() {
+        let output = WebMidi.getOutputById(activeClockOutput);
+        midiClockSender = function(time, stepCounter) {
+          let startDelay = time - Tone.now() + Tone.context.lookAhead;
+          let sixteenth = Tone.Time('16n').toSeconds();
+          for (let i = 0; i < 6; i++) {
+            let tickDelay = startDelay + (sixteenth / 6) * i;
+            if (i === 0 && stepCounter === 0 && !midiClockStartSent) {
+              console.log('sending clock start');
+              output.sendStart({ time: `+${tickDelay * 1000}` });
+              midiClockStartSent = true;
+            }
+            output.sendClock({ time: `+${tickDelay * 1000}` });
           }
         };
       }
-      for (let option of Array.from(outputSelector.children)) {
-        option.selected = option.value === id;
-      }
-    }
 
-    function onActiveClockOutputChange(id) {
-      if (activeClockOutput !== 'none') {
-        stopSendingMidiClock();
+      function stopSendingMidiClock() {
+        midiClockSender = null;
+        midiClockStartSent = false;
       }
-      activeClockOutput = id;
-      if (activeClockOutput !== 'none') {
-        startSendingMidiClock();
-      }
-      for (let option of Array.from(clockOutputSelector.children)) {
-        option.selected = option.value === id;
-      }
-    }
 
-    function startSendingMidiClock() {
-      let output = WebMidi.getOutputById(activeClockOutput);
-      midiClockSender = function(time, stepCounter) {
-        let startDelay = time - Tone.now() + Tone.context.lookAhead;
-        let sixteenth = Tone.Time('16n').toSeconds();
-        for (let i = 0; i < 6; i++) {
-          let tickDelay = startDelay + (sixteenth / 6) * i;
-          if (i === 0 && stepCounter === 0 && !midiClockStartSent) {
-            console.log('sending clock start');
-            output.sendStart({ time: `+${tickDelay * 1000}` });
-            midiClockStartSent = true;
+      function incomingMidiClockStart() {
+        midiClockCounter = 0;
+        eighthsCounter = 0;
+        startPattern();
+      }
+
+      function incomingMidiClockStop() {
+        midiClockCounter = 0;
+        eighthsCounter = 0;
+        lastEighthAt = null;
+        stopPattern();
+      }
+
+      function incomingMidiClockTick(evt) {
+        if (midiClockCounter % 6 === 0) {
+          tick();
+        }
+        if (eighthsCounter % 12 === 0) {
+          if (lastEighthAt) {
+            oneEighth = (evt.timestamp - lastEighthAt) / 1000;
           }
-          output.sendClock({ time: `+${tickDelay * 1000}` });
+          lastEighthAt = evt.timestamp;
         }
-      };
-    }
-
-    function stopSendingMidiClock() {
-      midiClockSender = null;
-      midiClockStartSent = false;
-    }
-
-    function incomingMidiClockStart() {
-      midiClockCounter = 0;
-      eighthsCounter = 0;
-      startPattern();
-    }
-
-    function incomingMidiClockStop() {
-      midiClockCounter = 0;
-      eighthsCounter = 0;
-      lastEighthAt = null;
-      stopPattern();
-    }
-
-    function incomingMidiClockTick(evt) {
-      if (midiClockCounter % 6 === 0) {
-        tick();
+        midiClockCounter++;
+        eighthsCounter++;
       }
-      if (eighthsCounter % 12 === 0) {
-        if (lastEighthAt) {
-          oneEighth = (evt.timestamp - lastEighthAt) / 1000;
+
+      function onActiveClockInputChange(id) {
+        if (activeClockInput === 'none') {
+          Tone.Transport.clear(currentSchedulerId);
+          currentSchedulerId = null;
+        } else if (activeClockInput) {
+          let input = WebMidi.getInputById(activeClockInput);
+          input.removeListener('start', 'all', incomingMidiClockStart);
+          input.removeListener('stop', 'all', incomingMidiClockStop);
+          input.removeListener('clock', 'all', incomingMidiClockTick);
         }
-        lastEighthAt = evt.timestamp;
+        activeClockInput = id;
+        if (activeClockInput === 'none') {
+          currentSchedulerId = Tone.Transport.scheduleRepeat(tick, '16n');
+          oneEighth = Tone.Time('8n').toSeconds();
+        } else {
+          let input = WebMidi.getInputById(id);
+          input.addListener('start', 'all', incomingMidiClockStart);
+          input.addListener('stop', 'all', incomingMidiClockStop);
+          input.addListener('clock', 'all', incomingMidiClockTick);
+        }
       }
-      midiClockCounter++;
-      eighthsCounter++;
-    }
 
-    function onActiveClockInputChange(id) {
-      if (activeClockInput === 'none') {
-        Tone.Transport.clear(currentSchedulerId);
-        currentSchedulerId = null;
-      } else if (activeClockInput) {
-        let input = WebMidi.getInputById(activeClockInput);
-        input.removeListener('start', 'all', incomingMidiClockStart);
-        input.removeListener('stop', 'all', incomingMidiClockStop);
-        input.removeListener('clock', 'all', incomingMidiClockTick);
-      }
-      activeClockInput = id;
-      if (activeClockInput === 'none') {
-        currentSchedulerId = Tone.Transport.scheduleRepeat(tick, '16n');
-        oneEighth = Tone.Time('8n').toSeconds();
-      } else {
-        let input = WebMidi.getInputById(id);
-        input.addListener('start', 'all', incomingMidiClockStart);
-        input.addListener('stop', 'all', incomingMidiClockStop);
-        input.addListener('clock', 'all', incomingMidiClockTick);
-      }
-    }
+      onDevicesChanged();
+      WebMidi.addListener('connected', onDevicesChanged);
+      WebMidi.addListener('disconnected', onDevicesChanged);
 
-    onDevicesChanged();
-    WebMidi.addListener('connected', onDevicesChanged);
-    WebMidi.addListener('disconnected', onDevicesChanged);
-/*
-    $(outputSelector)
-      .on('change', evt => onActiveOutputChange(evt.target.value))
-      .formSelect();
-    $(clockOutputSelector)
-      .on('change', evt => onActiveClockOutputChange(evt.target.value))
-      .formSelect();
-    $(clockInputSelector)
-      .on('change', evt => onActiveClockInputChange(evt.target.value))
-      .formSelect();
-      */
 
-  });
 
-  document.querySelector('.app').addEventListener('click', event => {
-    if (event.target.classList.contains('cell')) {
-      toggleStep(event.target);
-    }
-  });
-  document.querySelector('.regenerate').addEventListener('click', event => {
-    event.preventDefault();
-    event.currentTarget.classList.remove('pulse');
-    document.querySelector('.playpause').classList.remove('pulse');
-    regenerate().then(() => {
-      if (!hasBeenStarted) {
-        Tone.context.resume();
-        Tone.Transport.start();
-        hasBeenStarted = true;
-      }
-      if (Tone.Transport.state === 'started') {
-        setTimeout(startPattern, 0);
-      }
-    });
-  });
-  document.querySelector('.playpause').addEventListener('click', event => {
-    event.preventDefault();
-    document.querySelector('.playpause').classList.remove('pulse');
+    })
+
+
+  },[])
+
+
+  const onPlayClick = (ev) => {
+    ev.preventDefault();
+    setPlaying(!playing)
     if (_.isNumber(stepCounter)) {
       stopPattern();
       Tone.Transport.pause();
@@ -663,148 +422,89 @@ Promise.all([
       startPattern();
       hasBeenStarted = true;
     }
-  });
+  }
 
-  let draggingSeedMarker = false;
-  document.querySelector('.app').addEventListener('mousedown', evt => {
-    let el = evt.target;
-    if (
-      el.classList.contains('gutter') &&
-      el.classList.contains('seed-marker')
-    ) {
-      draggingSeedMarker = true;
-      evt.preventDefault();
-    }
-  });
-  document.querySelector('.app').addEventListener('mouseup', () => {
-    draggingSeedMarker = false;
-  });
-  document.querySelector('.app').addEventListener('mouseover', evt => {
-    if (draggingSeedMarker) {
-      let el = evt.target;
-      while (el) {
-        if (el.classList.contains('step')) {
-          let stepIdx = +el.dataset.stepIdx;
-          if (stepIdx > 0) {
-            state.seedLength = stepIdx;
-            renderPattern();
-          }
-          break;
-        }
-        el = el.parentElement;
-      }
-    }
-  });
-  document
-    .querySelector('#swing')
-    .addEventListener('input', evt => setSwing(+evt.target.value));
-  document
-    .querySelector('#temperature')
-    .addEventListener('input', evt => (temperature = +evt.target.value));
-  document.querySelector('#tempo').addEventListener('input', evt => {
-    Tone.Transport.bpm.value = state.tempo = +evt.target.value;
-    oneEighth = Tone.Time('8n').toSeconds();
-  });
+  const onRegenerateClick = (ev) => {
+    ev.preventDefault();
+    const seed = _.take(pattern, seedLength)
+    const generateLength = patternLength - seedLength
+    worker.postMessage([seed, generateLength, temperature])
+  }
 
-  document.querySelector('#tempo').addEventListener('change', evt => {
-    //setPatternLength(+evt.target.value)
-  })
-  //$('#pattern-length')
-    //.on('change', evt => setPatternLength(+evt.target.value))
-    //.formSelect();
-
-  window.addEventListener('resize', repositionRegenerateButton);
-
-  renderPattern();
-
-  document.querySelector('.progress').remove();
-  document.querySelector('.app').style.display = null;
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const Codepen = () => {
 
   return (
     <>
-      <div className="progress pink">
-        <div className="indeterminate white"></div>
-      </div>
-      <div className="app" style={{display: "non"}}>
+      <div className="app">
         <div className="sequencer">
-          <div className="steps"></div>
+          <div className="steps">
+
+            {pattern.map( (step, stepIdx) =>{
+              return (
+                <div className={`step ${(stepIdx < seedLength)? 'seed':''} ${(regenerating)? 'regenerating':''}`} key={stepIdx} style={{flex: (stepIdx % 2 === 0) ? swing : 1 - swing}}>
+                  {DRUM_CLASSES.map( (drumClass, cellIdx) =>{
+                    const on = step.indexOf(cellIdx) >= 0
+                    return (
+                      <div className={`cell ${(on)?'on':''} ${_.kebabCase(drumClass)}`} key={cellIdx} onClick={
+                        (ev) => setPattern( pattern.map( (p,i) => (i===stepIdx) ? (on ? p.filter(s=>s!==cellIdx): [...p,cellIdx]) : p ) )
+                      }>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+
+          </div>
         </div>
-        <a className="regenerate btn-floating btn-large waves-effect waves-light pink darken-2 pulse">
-          <i className="material-icons">refresh</i>
-        </a>
         <div className="controls">
           <div className="control">
-            <a className="playpause btn-floating btn-large waves-effect waves-light blue">
-              <i className="material-icons play-icon">play_arrow</i>
-              <i className="material-icons pause-icon" style={{display: "none"}}>pause</i>
+            <a onClick={onPlayClick} className="playpause btn-floating btn-large waves-effect waves-light blue">
+              <i className={`material-icons ${playing?'pause':'play'}-icon`}>{`${playing?'pause':'play_arrow'}`}</i>
             </a>
           </div>
           <div className="control">
-            <div className="input-field grey-text">
-              <select id="pattern-length" defaultValue={16}>
-                <option>4</option>
-                <option>8</option>
-                <option>16</option>
-                <option>32</option>
-              </select>
-              Pattern length
-            </div>
+            <a onClick={onRegenerateClick} className="regenerate btn-floating btn-large waves-effect waves-light pink darken-2">
+              <i className="material-icons">refresh</i>
+            </a>
           </div>
           <div className="control">
             <p className="range-field grey-text">
-              <input type="range" id="tempo" min="20" max="240" value="120" step="1"/> Tempo
+              <input type="range" min="20" max="240" value={tempo} step="1" onChange={onTempoChange} /> Tempo
             </p>
           </div>
           <div className="control">
             <p className="range-field grey-text">
-              <input type="range" id="swing" min="0.5" max="0.7" value="0.55" step="0.05"/> Swing
+              <input type="range" min="0.5" max="0.7" value={swing} step="0.05" onChange={onSwingChange} /> Swing
             </p>
           </div>
           <div className="control">
             <p className="range-field grey-text">
-              <input type="range" id="temperature" className="tooltipped" min="0.5" max="2" value="1.1" step="0.1" data-tooltip="Higher temperatures will make the neural network generates wilder patterns" data-delay="500"/> Temperature
+              <input type="range" min="4" max="16" value={seedLength} step="1" onChange={onSeedLengthChange} /> Seed
+            </p>
+          </div>
+          <div className="control">
+            <p className="range-field grey-text">
+              <input type="range" min="4" max="32" value={patternLength} step="1" onChange={onPatternLengthChange} /> Length
+            </p>
+          </div>
+          <div className="control">
+            <p className="range-field grey-text">
+              <input type="range" min="0.5" max="2" value={temperature} step="0.1" onChange={onTemperatureChange}  data-tooltip="Higher temperatures will make the neural network generates wilder patterns" data-delay="500"/>
+               Temperature
             </p>
           </div>
         </div>
       </div>
       <div className="info">
-        <p className="webmidi-enabled" style={{display: "none"}}>
+        <p>
           Output:
           <select className="midi-output"></select>
         </p>
-        <p className="webmidi-enabled" style={{display: "none"}}>
+        <p>
           MIDI clock output:
           <select className="midi-clock-output"></select>
         </p>
-        <p className="webmidi-enabled" style={{display: "none"}}>
+        <p>
           MIDI clock input:
           <select className="midi-clock-input"></select>
         </p>
