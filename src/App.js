@@ -1,6 +1,6 @@
 import React, {useState, useEffect, useRef} from 'react'
 import './App.css'
-import DRUM_SEQS from './drumSeq'
+//import DRUM_SEQS from './drumSeq'
 import {Recorder, Player, PianoRollCanvasVisualizer} from "@magenta/music/node/core"
 import Tone from 'tone'
 import Codepen from './Codepen'
@@ -32,11 +32,8 @@ const App = () => {
   }))
   const recoderRef = useRef()
   const loopRef = useRef(true)
-  const [tempo, setTempo] = useState(120)
   const [ready, setReady] = useState(false)
   const [recording, setRecording] = useState(false)
-  const [playing, setPlaying] = useState(false)
-  const [playClick, setPlayClick] = useState(false)
 
   useEffect(()=>{
     worker.addEventListener('message', (ev) => {

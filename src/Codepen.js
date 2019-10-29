@@ -1,7 +1,6 @@
 import React, {useState, useEffect, useRef} from 'react'
 import './Codepen.css'
 import _ from 'lodash'
-import {sequences} from "@magenta/music/node/core"
 import Tone from 'tone'
 import rgWorker from './regenerate.worker.js'
 
@@ -80,13 +79,6 @@ let drumKit = [
 ];
 let midiDrums = [36, 38, 42, 46, 41, 43, 45, 49, 51];
 
-const outputs = {
-  internal: {
-    play: (drumIdx, velocity, time) => {
-      drumKit[drumIdx].get(velocity).start(time);
-    }
-  }
-}
 
 const getStepVelocity = (step) =>{
   if (step % 4 === 0)
@@ -98,7 +90,7 @@ const getStepVelocity = (step) =>{
 }
 
 function humanizeTime(time) {
-  return time + (Math.random()-0.5) * TIME_HUMANIZATION;
+  return time; // + (Math.random()-0.5) * TIME_HUMANIZATION;
 }
 
 Promise.all([
@@ -106,6 +98,12 @@ Promise.all([
 ]).then(([vars]) => {
 
 });
+
+const internalPlayer = {
+  play: (drumIdx, velocity, time) => {
+    drumKit[drumIdx].get(velocity).start(time);
+  }
+}
 
 
 let hasBeenStarted = false,
@@ -128,10 +126,53 @@ const Codepen = () => {
   const [temperature, setTemperature] = useState(1.0)
   const [playing, setPlaying] = useState(false)
 
+  const [midiOutputs, setMidiOutputs] = useState([])
+  const [midiInputs, setMidiInputs] = useState([])
+  const [midiClockOutputs, setMidiClockOutputs] = useState([])
+  const [midiClockInputs, setMidiClockInputs] = useState([])
+
+  const [activeMidiOutput, setActiveMidiOutput] = useState('internal')
+  const [activeMidiInput, setActiveMidiInput] = useState('none')
+  const [activeMidiClockOutput, setActiveMidiClockOutput] = useState('none')
+  const [activeMidiClockInput, setActiveMidiClockInput] = useState('internal')
+
+
+  const onMidiOutputChange = (ev) => {
+    const id = ev.target.value
+    setActiveMidiOutput(id)
+    if (id === 'internal') {
+      outputRef.current = internalPlayer
+    }
+    else {
+      let output = WebMidi.getOutputById(id);
+      outputRef.current = {
+        play: (drumIdx, velo, time) => {
+          let delay = (time - Tone.now()) * 1000;
+          let duration = (oneEighth / 2) * 1000;
+          let velocity = { high: 1, med: 0.75, low: 0.5 };
+          output.playNote(midiDrums[drumIdx], 1, {
+            time: delay > 0 ? `+${delay}` : WebMidi.now,
+            velocity,
+            duration
+          });
+        }
+      }
+    }
+
+
+  }
+  const onMidiInputputChange = (ev) => setActiveMidiInput (ev.target.value)
+  const onMidiClockOutputChange = (ev) => setActiveMidiClockOutput (ev.target.value)
+  const onMidiClockInputChange = (ev) => setActiveMidiClockInput (ev.target.value)
+
+
+  //refs needed for async calls
+
   const patternRef = useRef(pattern)
-  patternRef.current = pattern
   const swingRef = useRef(swing)
-  swingRef.current = swing
+  const playingRef = useRef(playing)
+
+  const outputRef = useRef(internalPlayer)
 
 
   const onPatternLengthChange = (ev) => {
@@ -155,6 +196,7 @@ const Codepen = () => {
   const onSwingChange = (ev) => {
     const s = parseFloat(ev.target.value)
     setSwing(s)
+    swingRef.current = s
   }
 
   const onTemperatureChange = (ev) => {
@@ -165,10 +207,13 @@ const Codepen = () => {
   function startPattern() {
     stepCounter = -1;
     midiClockStartSent = false;
+    setPlaying(true)
+    playingRef.current = true
   }
 
   function stopPattern() {
-    stepCounter = null;
+    setPlaying(false)
+    playingRef.current = false
   }
 
 
@@ -194,7 +239,7 @@ const Codepen = () => {
   }
 
   const tick = (time = Tone.now() - Tone.context.lookAhead) =>{
-    if (_.isNumber(stepCounter)) {
+    if (playingRef.current) {
       stepCounter++
 
       if (midiClockSender) midiClockSender(time, stepCounter)
@@ -205,11 +250,10 @@ const Codepen = () => {
         time += (swingRef.current - 0.5) * oneEighth
       }
       let velocity = getStepVelocity(stepIdx)
-      let drums = patternRef.current[stepIdx]
 
-      drums.forEach(d => {
+      patternRef.current[stepIdx].forEach(d => {
         let humanizedTime = stepIdx === 0 ? time : humanizeTime(time)
-        outputs[activeOutput].play(d, velocity, humanizedTime)
+        outputRef.current.play(d, velocity, humanizedTime)
         visualizePlay(humanizedTime, stepIdx, d)
       })
     }
@@ -219,201 +263,135 @@ const Codepen = () => {
   useEffect(()=>{
     worker.addEventListener('message', (ev) => {
       setPattern(ev.data)
+      patternRef.current = ev.data
     })
   },[])
 
+  let activeClockOutput,
+    midiClockCounter = 0,
+    eighthsCounter = 0,
+    lastEighthAt;
+
+
+  const onDevicesChanged = () => {
+    setMidiInputs([ {id:'none',name:'Grid cells'}, ...WebMidi.inputs])
+    setMidiClockInputs([ {id:'none',name:'None (internal clock)'}, ...WebMidi.inputs])
+    setMidiOutputs([ {id:'internal',name:'Internal drumkit'}, ...WebMidi.outputs])
+    setMidiClockOutputs([ {id:'none',name:'Not sending'}, ...WebMidi.outputs])
+
+    onActiveOutputChange('internal');
+    onActiveClockOutputChange('none');
+    onActiveClockInputChange('none');
+  }
+
+
+  const onActiveOutputChange = (id) => {
+  }
+
+  function onActiveClockOutputChange(id) {
+    if (activeClockOutput !== 'none') {
+      stopSendingMidiClock();
+    }
+    activeClockOutput = id;
+    if (activeClockOutput !== 'none') {
+      startSendingMidiClock();
+    }
+  }
+
+  function onActiveClockInputChange(id) {
+    //cleanup
+    if (activeClockInput === 'none') {
+      Tone.Transport.clear(currentSchedulerId);
+      currentSchedulerId = null;
+    } else if (activeClockInput) {
+      let input = WebMidi.getInputById(activeClockInput);
+      input.removeListener('start', 'all', incomingMidiClockStart);
+      input.removeListener('stop', 'all', incomingMidiClockStop);
+      input.removeListener('clock', 'all', incomingMidiClockTick);
+    }
+
+    activeClockInput = id;
+    if (activeClockInput === 'none') {
+      currentSchedulerId = Tone.Transport.scheduleRepeat(tick, '16n');
+      oneEighth = Tone.Time('8n').toSeconds();
+    } else {
+      let input = WebMidi.getInputById(id);
+      input.addListener('start', 'all', incomingMidiClockStart);
+      input.addListener('stop', 'all', incomingMidiClockStop);
+      input.addListener('clock', 'all', incomingMidiClockTick);
+    }
+  }
+
+  function startSendingMidiClock() {
+    let output = WebMidi.getOutputById(activeClockOutput);
+    midiClockSender = function(time, stepCounter) {
+      let startDelay = time - Tone.now() + Tone.context.lookAhead;
+      let sixteenth = Tone.Time('16n').toSeconds();
+      for (let i = 0; i < 6; i++) {
+        let tickDelay = startDelay + (sixteenth / 6) * i;
+        if (i === 0 && stepCounter === 0 && !midiClockStartSent) {
+          console.log('sending clock start');
+          output.sendStart({ time: `+${tickDelay * 1000}` });
+          midiClockStartSent = true;
+        }
+        output.sendClock({ time: `+${tickDelay * 1000}` });
+      }
+    };
+  }
+
+  function stopSendingMidiClock() {
+    midiClockSender = null;
+    midiClockStartSent = false;
+  }
+
+  function incomingMidiClockStart() {
+    midiClockCounter = 0;
+    eighthsCounter = 0;
+    startPattern();
+  }
+
+  function incomingMidiClockStop() {
+    midiClockCounter = 0;
+    eighthsCounter = 0;
+    lastEighthAt = null;
+    stopPattern();
+  }
+
+  function incomingMidiClockTick(evt) {
+    if (midiClockCounter % 6 === 0) {
+      tick();
+    }
+    if (eighthsCounter % 12 === 0) {
+      if (lastEighthAt) {
+        oneEighth = (evt.timestamp - lastEighthAt) / 1000;
+      }
+      lastEighthAt = evt.timestamp;
+    }
+    midiClockCounter++;
+    eighthsCounter++;
+  }
+
+
   useEffect(()=>{
-
-
-
     WebMidi.enable(err => {
       if (err) {
-        console.error('WebMidi could not be enabled', err);
-        return;
+        console.error('WebMidi could not be enabled', err)
+        return
       }
-      let outputSelector = document.querySelector('.midi-output');
-      let clockOutputSelector = document.querySelector('.midi-clock-output');
-      let clockInputSelector = document.querySelector('.midi-clock-input');
-      let activeClockOutput,
-        midiClockCounter = 0,
-        eighthsCounter = 0,
-        lastEighthAt;
-
-      function onDevicesChanged() {
-        while (outputSelector.firstChild) {
-          outputSelector.firstChild.remove();
-        }
-        let internalOption = document.createElement('option');
-        internalOption.value = 'internal';
-        internalOption.innerText = 'Internal drumkit';
-        outputSelector.appendChild(internalOption);
-        for (let output of WebMidi.outputs) {
-          let option = document.createElement('option');
-          option.value = output.id;
-          option.innerText = output.name;
-          outputSelector.appendChild(option);
-        }
-        //$(outputSelector).formSelect();
-        onActiveOutputChange('internal');
-
-        while (clockOutputSelector.firstChild) {
-          clockOutputSelector.firstChild.remove();
-        }
-        let noneOption = document.createElement('option');
-        noneOption.value = 'none';
-        noneOption.innerText = 'Not sending';
-        clockOutputSelector.appendChild(noneOption);
-        for (let output of WebMidi.outputs) {
-          let option = document.createElement('option');
-          option.value = output.id;
-          option.innerText = output.name;
-          clockOutputSelector.appendChild(option);
-        }
-        //$(clockOutputSelector).formSelect();
-        onActiveClockOutputChange('none');
-
-        while (clockInputSelector.firstChild) {
-          clockInputSelector.firstChild.remove();
-        }
-        noneOption = document.createElement('option');
-        noneOption.value = 'none';
-        noneOption.innerText = 'None (using internal clock)';
-        clockInputSelector.appendChild(noneOption);
-        for (let input of WebMidi.inputs) {
-          let option = document.createElement('option');
-          option.value = input.id;
-          option.innerText = input.name;
-          clockInputSelector.appendChild(option);
-        }
-        //$(clockInputSelector).formSelect();
-        onActiveClockInputChange('none');
+      onDevicesChanged()
+      WebMidi.addListener('connected', onDevicesChanged)
+      WebMidi.addListener('disconnected', onDevicesChanged)
+      return () =>{
+        WebMidi.removeListener('connected', onDevicesChanged)
+        WebMidi.removeListener('disconnected', onDevicesChanged)
       }
-
-      function onActiveOutputChange(id) {
-        if (activeOutput !== 'internal') {
-          outputs[activeOutput] = null;
-        }
-        activeOutput = id;
-        if (activeOutput !== 'internal') {
-          let output = WebMidi.getOutputById(id);
-          outputs[id] = {
-            play: (drumIdx, velo, time) => {
-              let delay = (time - Tone.now()) * 1000;
-              let duration = (oneEighth / 2) * 1000;
-              let velocity = { high: 1, med: 0.75, low: 0.5 };
-              output.playNote(midiDrums[drumIdx], 1, {
-                time: delay > 0 ? `+${delay}` : WebMidi.now,
-                velocity,
-                duration
-              });
-            }
-          };
-        }
-        for (let option of Array.from(outputSelector.children)) {
-          option.selected = option.value === id;
-        }
-      }
-
-      function onActiveClockOutputChange(id) {
-        if (activeClockOutput !== 'none') {
-          stopSendingMidiClock();
-        }
-        activeClockOutput = id;
-        if (activeClockOutput !== 'none') {
-          startSendingMidiClock();
-        }
-        for (let option of Array.from(clockOutputSelector.children)) {
-          option.selected = option.value === id;
-        }
-      }
-
-      function startSendingMidiClock() {
-        let output = WebMidi.getOutputById(activeClockOutput);
-        midiClockSender = function(time, stepCounter) {
-          let startDelay = time - Tone.now() + Tone.context.lookAhead;
-          let sixteenth = Tone.Time('16n').toSeconds();
-          for (let i = 0; i < 6; i++) {
-            let tickDelay = startDelay + (sixteenth / 6) * i;
-            if (i === 0 && stepCounter === 0 && !midiClockStartSent) {
-              console.log('sending clock start');
-              output.sendStart({ time: `+${tickDelay * 1000}` });
-              midiClockStartSent = true;
-            }
-            output.sendClock({ time: `+${tickDelay * 1000}` });
-          }
-        };
-      }
-
-      function stopSendingMidiClock() {
-        midiClockSender = null;
-        midiClockStartSent = false;
-      }
-
-      function incomingMidiClockStart() {
-        midiClockCounter = 0;
-        eighthsCounter = 0;
-        startPattern();
-      }
-
-      function incomingMidiClockStop() {
-        midiClockCounter = 0;
-        eighthsCounter = 0;
-        lastEighthAt = null;
-        stopPattern();
-      }
-
-      function incomingMidiClockTick(evt) {
-        if (midiClockCounter % 6 === 0) {
-          tick();
-        }
-        if (eighthsCounter % 12 === 0) {
-          if (lastEighthAt) {
-            oneEighth = (evt.timestamp - lastEighthAt) / 1000;
-          }
-          lastEighthAt = evt.timestamp;
-        }
-        midiClockCounter++;
-        eighthsCounter++;
-      }
-
-      function onActiveClockInputChange(id) {
-        if (activeClockInput === 'none') {
-          Tone.Transport.clear(currentSchedulerId);
-          currentSchedulerId = null;
-        } else if (activeClockInput) {
-          let input = WebMidi.getInputById(activeClockInput);
-          input.removeListener('start', 'all', incomingMidiClockStart);
-          input.removeListener('stop', 'all', incomingMidiClockStop);
-          input.removeListener('clock', 'all', incomingMidiClockTick);
-        }
-        activeClockInput = id;
-        if (activeClockInput === 'none') {
-          currentSchedulerId = Tone.Transport.scheduleRepeat(tick, '16n');
-          oneEighth = Tone.Time('8n').toSeconds();
-        } else {
-          let input = WebMidi.getInputById(id);
-          input.addListener('start', 'all', incomingMidiClockStart);
-          input.addListener('stop', 'all', incomingMidiClockStop);
-          input.addListener('clock', 'all', incomingMidiClockTick);
-        }
-      }
-
-      onDevicesChanged();
-      WebMidi.addListener('connected', onDevicesChanged);
-      WebMidi.addListener('disconnected', onDevicesChanged);
-
-
-
     })
-
-
   },[])
 
 
   const onPlayClick = (ev) => {
     ev.preventDefault();
-    setPlaying(!playing)
-    if (_.isNumber(stepCounter)) {
+    if (playing) {
       stopPattern();
       Tone.Transport.pause();
     } else {
@@ -434,79 +412,84 @@ const Codepen = () => {
 
   return (
     <>
-      <div className="app">
-        <div className="sequencer">
-          <div className="steps">
-
-            {pattern.map( (step, stepIdx) =>{
-              return (
-                <div className={`step ${(stepIdx < seedLength)? 'seed':''} ${(regenerating)? 'regenerating':''}`} key={stepIdx} style={{flex: (stepIdx % 2 === 0) ? swing : 1 - swing}}>
-                  {DRUM_CLASSES.map( (drumClass, cellIdx) =>{
-                    const on = step.indexOf(cellIdx) >= 0
-                    return (
-                      <div className={`cell ${(on)?'on':''} ${_.kebabCase(drumClass)}`} key={cellIdx} onClick={
-                        (ev) => setPattern( pattern.map( (p,i) => (i===stepIdx) ? (on ? p.filter(s=>s!==cellIdx): [...p,cellIdx]) : p ) )
-                      }>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
-
-          </div>
-        </div>
-        <div className="controls">
-          <div className="control">
-            <a onClick={onPlayClick} className="playpause btn-floating btn-large waves-effect waves-light blue">
-              <i className={`material-icons ${playing?'pause':'play'}-icon`}>{`${playing?'pause':'play_arrow'}`}</i>
-            </a>
-          </div>
-          <div className="control">
-            <a onClick={onRegenerateClick} className="regenerate btn-floating btn-large waves-effect waves-light pink darken-2">
-              <i className="material-icons">refresh</i>
-            </a>
-          </div>
-          <div className="control">
-            <p className="range-field grey-text">
-              <input type="range" min="20" max="240" value={tempo} step="1" onChange={onTempoChange} /> Tempo
-            </p>
-          </div>
-          <div className="control">
-            <p className="range-field grey-text">
-              <input type="range" min="0.5" max="0.7" value={swing} step="0.05" onChange={onSwingChange} /> Swing
-            </p>
-          </div>
-          <div className="control">
-            <p className="range-field grey-text">
-              <input type="range" min="4" max="16" value={seedLength} step="1" onChange={onSeedLengthChange} /> Seed
-            </p>
-          </div>
-          <div className="control">
-            <p className="range-field grey-text">
-              <input type="range" min="4" max="32" value={patternLength} step="1" onChange={onPatternLengthChange} /> Length
-            </p>
-          </div>
-          <div className="control">
-            <p className="range-field grey-text">
-              <input type="range" min="0.5" max="2" value={temperature} step="0.1" onChange={onTemperatureChange}  data-tooltip="Higher temperatures will make the neural network generates wilder patterns" data-delay="500"/>
-               Temperature
-            </p>
-          </div>
+      <div className="sequencer">
+        <div className="steps">
+          {pattern.map( (step, stepIdx) =>{
+            return (
+              <div className={`step ${(stepIdx < seedLength)? 'seed':''} ${(regenerating)? 'regenerating':''}`} key={stepIdx} style={{flex: (stepIdx % 2 === 0) ? swing : 1 - swing}}>
+                {DRUM_CLASSES.map( (drumClass, cellIdx) =>{
+                  const on = step.indexOf(cellIdx) >= 0
+                  return (
+                    <div className={`cell ${(on)?'on':''} ${_.kebabCase(drumClass)}`} key={cellIdx} onClick={
+                      (ev) => {
+                        const npat = pattern.map((p,i) => (i===stepIdx) ? (on ? p.filter(s=>s!==cellIdx): [...p,cellIdx]) : p)
+                        setPattern(npat)
+                        patternRef.current = npat
+                      }}></div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       </div>
-      <div className="info">
+      <div className="controls">
+        <div className="control">
+          <a href="/" onClick={onPlayClick} className="playpause btn-floating btn-large waves-effect waves-light blue">
+            <i className={`material-icons ${playing?'pause':'play'}-icon`}>{`${playing?'pause':'play_arrow'}`}</i>
+          </a>
+        </div>
+        <div className="control">
+          <a href="/" onClick={onRegenerateClick} className="regenerate btn-floating btn-large waves-effect waves-light pink darken-2">
+            <i className="material-icons">refresh</i>
+          </a>
+        </div>
+        <div className="control">
+          <p className="range-field grey-text">
+            <input type="range" min="20" max="240" value={tempo} step="1" onChange={onTempoChange} /> Tempo
+          </p>
+        </div>
+        <div className="control">
+          <p className="range-field grey-text">
+            <input type="range" min="0.5" max="0.7" value={swing} step="0.05" onChange={onSwingChange} /> Swing
+          </p>
+        </div>
+        <div className="control">
+          <p className="range-field grey-text">
+            <input type="range" min="4" max="16" value={seedLength} step="1" onChange={onSeedLengthChange} /> Seed
+          </p>
+        </div>
+        <div className="control">
+          <p className="range-field grey-text">
+            <input type="range" min="4" max="32" value={patternLength} step="1" onChange={onPatternLengthChange} /> Length
+          </p>
+        </div>
+        <div className="control">
+          <p className="range-field grey-text">
+            <input type="range" min="0.5" max="2" value={temperature} step="0.1" onChange={onTemperatureChange}  data-tooltip="Higher temperatures will make the neural network generates wilder patterns" data-delay="500"/>
+             Temperature
+          </p>
+        </div>
+      </div>
+
+      <div className="info grey-text">
         <p>
+          Input:
+          <select className="midi" onChange={onMidiInputputChange} value={activeMidiInput}>
+            {midiInputs.map( m => <option key={m.id} value={m.id} >{m.name}</option>)}
+          </select>
+          Clock input:
+          <select className="midi" onChange={onMidiClockInputChange} value={activeMidiClockInput}>
+            {midiClockInputs.map( m => <option key={m.id} value={m.id} >{m.name}</option>)}
+          </select>
           Output:
-          <select className="midi-output"></select>
-        </p>
-        <p>
-          MIDI clock output:
-          <select className="midi-clock-output"></select>
-        </p>
-        <p>
-          MIDI clock input:
-          <select className="midi-clock-input"></select>
+          <select className="midi" onChange={onMidiOutputChange} value={activeMidiOutput}>
+            {midiOutputs.map( m => <option key={m.id} value={m.id} >{m.name}</option>)}
+          </select>
+          Clock output:
+          <select className="midi" onChange={onMidiClockOutputChange} value={activeMidiClockOutput}>
+            {midiClockOutputs.map( m => <option key={m.id} value={m.id} >{m.name}</option>)}
+          </select>
         </p>
       </div>
     </>
