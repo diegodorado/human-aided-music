@@ -85,7 +85,8 @@ class Recorder {
 
       this.step++
 
-      this.callbackObject.update(this.getNoteSequence())
+      const ns = NoteSequence.create({notes: this._notes})
+      this.callbackObject.update(ns)
 
     }, '32n')
     Tone.Transport.bpm.value = this.config.qpm
@@ -132,18 +133,13 @@ class Recorder {
 
 
 
-  getNoteSequence() {
-    const visualizerNS = NoteSequence.create({
-      notes: this._notes
-    })
-    return visualizerNS
-  }
-
   noteOn(pitch, velocity, timeStamp) {
     const note = new NoteSequence.Note()
     note.pitch = pitch
     note.startTime = (timeStamp - this.firstNoteTimestamp) / MILLIS_PER_SECOND
     note.velocity = velocity
+
+    this.callbackObject.noteOn(note)
 
     this.notes.push(note)
     // Save this note so that we can finish it when we receive the note up

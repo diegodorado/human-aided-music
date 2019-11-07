@@ -7,19 +7,19 @@ const tomLow = new Tone
                        pitchDecay: 0.008,
                        envelope: {attack: 0.01, decay: 0.5, sustain: 0}
                      })
-                     .toMaster();
+                     .toMaster()
 const tomMid = new Tone
                      .MembraneSynth({
                        pitchDecay: 0.008,
                        envelope: {attack: 0.01, decay: 0.5, sustain: 0}
                      })
-                     .toMaster();
+                     .toMaster()
 const tomHigh = new Tone
                       .MembraneSynth({
                         pitchDecay: 0.008,
                         envelope: {attack: 0.01, decay: 0.5, sustain: 0}
                       })
-                      .toMaster();
+                      .toMaster()
 const closedHihat =
     new Tone
         .MetalSynth({
@@ -30,7 +30,7 @@ const closedHihat =
           resonance: 4000,
           octaves: 1
         })
-        .toMaster();
+        .toMaster()
 const openHihat =
     new Tone
         .MetalSynth({
@@ -41,8 +41,8 @@ const openHihat =
           resonance: 4000,
           octaves: 1
         })
-        .toMaster();
-const ride = new Tone.MetalSynth().toMaster();
+        .toMaster()
+const ride = new Tone.MetalSynth().toMaster()
 const crash = new Tone
                     .MetalSynth({
                       frequency: 300,
@@ -52,59 +52,49 @@ const crash = new Tone
                       resonance: 4000,
                       octaves: 1.5
                     })
-                    .toMaster();
+                    .toMaster()
 const snare =
     new Tone
         .NoiseSynth({
           noise: {type: 'white'},
           envelope: {attack: 0.005, decay: 0.05, sustain: 0.1, release: 0.4}
         })
-        .toMaster();
+        .toMaster()
 const loClick = new Tone
                       .MembraneSynth({
                         pitchDecay: 0.008,
                         envelope: {attack: 0.001, decay: 0.3, sustain: 0}
                       })
-                      .toMaster();
+                      .toMaster()
 const hiClick = new Tone
                       .MembraneSynth({
                         pitchDecay: 0.008,
                         envelope: {attack: 0.001, decay: 0.3, sustain: 0}
                       })
-                      .toMaster();
+                      .toMaster()
 const pitchPlayers = [
-  (time, velocity = 1) =>
-      kick.triggerAttackRelease('C2', '8n', time, velocity),
-  (time, velocity = 1) =>
-      snare.triggerAttackRelease('16n', time, velocity),
-  (time, velocity = 1) =>
-      closedHihat.triggerAttack(time, 0.3, velocity),
-  (time, velocity = 1) =>
-      openHihat.triggerAttack(time, 0.3, velocity),
-  (time, velocity = 0.5) =>
-      tomLow.triggerAttack('G3', time, velocity),
-  (time, velocity = 0.5) =>
-      tomMid.triggerAttack('C4', time, velocity),
-  (time, velocity = 0.5) =>
-      tomHigh.triggerAttack('F4', time, velocity),
-  (time, velocity = 1) =>
-      crash.triggerAttack(time, 1.0, velocity),
-  (time, velocity = 1) =>
-      ride.triggerAttack(time, 0.5, velocity),
-  (time, velocity = 0.5) =>
-      loClick.triggerAttack('G5', time, velocity),
-  (time, velocity = 0.5) =>
-      hiClick.triggerAttack('C6', time, velocity)
+  (dur, vel) => kick.triggerAttackRelease('C2', '8n', dur, vel),
+  (dur, vel) => snare.triggerAttackRelease('16n', dur, vel),
+  (dur, vel) => closedHihat.triggerAttack(dur, 0.3, vel),
+  (dur, vel) => openHihat.triggerAttack(dur, 0.3, vel),
+  (dur, vel) => tomLow.triggerAttack('G3', dur, vel),
+  (dur, vel) => tomMid.triggerAttack('C4', dur, vel),
+  (dur, vel) => tomHigh.triggerAttack('F4', dur, vel),
+  (dur, vel) => crash.triggerAttack(dur, 1.0, vel),
+  (dur, vel) => ride.triggerAttack(dur, 0.5, vel),
+  (dur, vel) => loClick.triggerAttack('G5', dur, vel),
+  (dur, vel) => hiClick.triggerAttack('C6', dur, vel)
 ]
 
 const DrumKit ={
-  play: (pitch, time, velocity) => {
-      const idx = reverseMidiMapping.get(pitch)
-      if(idx===undefined)
-        console.log('not player for pitch '+pitch)
-      else
-        pitchPlayers[idx](time, velocity)
-    }
+  play: (note) => {
+    const idx = reverseMidiMapping.get(note.pitch)
+
+    if(idx===undefined)
+      console.log('not player for pitch '+note.pitch)
+    else
+      pitchPlayers[idx](Tone.now(), note.velocity/127)
+  }
 }
 
 export default DrumKit

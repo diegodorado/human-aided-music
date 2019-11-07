@@ -13,12 +13,8 @@ const recorder = new Recorder()
 const midiPlayer = new MIDIPlayer()
 const midiIO = new MidiIO()
 
-
-
-const el = document.getElementById('pianoRoll')
-const pianoRoll = new PianoRoll(el)
-const el2 = document.getElementById('pianoRoll2')
-const pianoRoll2 = new PianoRoll(el2)
+const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
+const pianoRoll2 = new PianoRoll(document.getElementById('pianoRoll2'))
 
 midiPlayer.requestMIDIAccess().then(() => {
 })
@@ -35,10 +31,8 @@ recorder.callbackObject = {
   update: (seq) => {
     pianoRoll.update(seq)
   },
-  noteOn: (pitch) =>{
-    const time = performance.now() / 1000
-    const note = { pitch: pitch,velocity: 100,startTime: time,endTime: time+0.5,isDrum: true}
-    DrumKit.play(pitch)
+  noteOn: (note) =>{
+    DrumKit.play(note)
   }
 }
 
