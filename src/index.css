@@ -33,6 +33,23 @@ section {
   position: relative;
 }
 
+
+
+
+#generating{
+  height: 5px;
+  bottom: 0;
+  background: #a8d;
+  position: absolute;
+}
+
+#seed{
+  height: 5px;
+  top: 0;
+  background: #fa8;
+  position: absolute;
+}
+
 #progress{
   height: 10px;
   background: #666;

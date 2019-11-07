@@ -4,6 +4,7 @@ import Tone from 'tone'
 
 const onNotes = new Set()
 
+
 const synth1 = new Tone.MonoSynth({
 	"oscillator" : {
 		"type" : "square"
@@ -11,7 +12,8 @@ const synth1 = new Tone.MonoSynth({
  "envelope" : {
  	"attack" : 0.1
  }
-}).toMaster()
+})
+
 
 const synth2 = new Tone.FMSynth(
   {
@@ -36,8 +38,20 @@ const synth2 = new Tone.FMSynth(
       sustain : 1 ,
       release : 0.5
     }
-  }).toMaster()
+  })
 
+const filter = new Tone.Filter(6000, "lowpass")
+const dist = new Tone.Distortion(0.125)
+
+const channel = new Tone.Channel()
+synth1.connect(channel)
+synth2.connect(channel)
+
+channel.connect(dist)
+dist.connect(filter)
+
+filter.toMaster()
+dist.toMaster()
 
 const getLastValue = (set) =>{
   var value;

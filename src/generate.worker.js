@@ -13,9 +13,14 @@ mvae.initialize().then( () => initialized = true)
 // receive a note sequence, and return another one
 self.addEventListener('message', (ev)=>{
   try {
-    runTap2Drum(ev.data).then((data) => {
-      postMessage(data)
-    })
+
+    console.log(ev.data.keys())
+    //const ns = NoteSequence.create({notes: _notes})
+    //const qns = sequences.quantizeNoteSequence(ns,4)
+
+    //runTap2Drum(ev.data).then((data) => {
+    //  postMessage(data)
+    //})
   } catch (err) {
     console.error(err);
   }
