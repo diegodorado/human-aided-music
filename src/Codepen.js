@@ -1,5 +1,4 @@
 import React, {useState, useEffect, useRef} from 'react'
-import './Codepen.css'
 import _ from 'lodash'
 import Tone from 'tone'
 import rgWorker from './regenerate.worker.js'
@@ -20,7 +19,7 @@ const DRUM_CLASSES = [
   'Clap',
   'Rim'
 ]
-const TIME_HUMANIZATION = 0.01;
+
 const sampleBaseUrl = 'https://s3-us-west-2.amazonaws.com/s.cdpn.io/969699'
 
 const reverb = new Tone.Convolver(
@@ -89,9 +88,6 @@ const getStepVelocity = (step) =>{
     return 'low'
 }
 
-function humanizeTime(time) {
-  return time; // + (Math.random()-0.5) * TIME_HUMANIZATION;
-}
 
 Promise.all([
   new Promise(res => Tone.Buffer.on('load', res))
@@ -148,6 +144,7 @@ const Codepen = () => {
       outputRef.current = {
         play: (drumIdx, velo, time) => {
           let delay = (time - Tone.now()) * 1000;
+          delay = 0
           let duration = (oneEighth / 2) * 1000;
           let velocity = { high: 1, med: 0.75, low: 0.5 };
           output.playNote(midiDrums[drumIdx], 1, {
@@ -252,9 +249,8 @@ const Codepen = () => {
       let velocity = getStepVelocity(stepIdx)
 
       patternRef.current[stepIdx].forEach(d => {
-        let humanizedTime = stepIdx === 0 ? time : humanizeTime(time)
-        outputRef.current.play(d, velocity, humanizedTime)
-        visualizePlay(humanizedTime, stepIdx, d)
+        outputRef.current.play(d, velocity, time)
+        visualizePlay(time, stepIdx, d)
       })
     }
   }

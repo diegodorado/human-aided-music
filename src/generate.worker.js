@@ -3,6 +3,13 @@ import {MusicVAE} from "@magenta/music/node/music_vae"
 const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoints'
 const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}/music_vae/groovae_tap2drum_2bar`;
 
+const mvae = new MusicVAE(TAP2DRUM_CKPT)
+
+let initialized = false
+
+mvae.initialize().then( () => initialized = true)
+
+
 // receive a note sequence, and return another one
 self.addEventListener('message', (ev)=>{
   try {
@@ -15,8 +22,9 @@ self.addEventListener('message', (ev)=>{
 })
 
 async function runTap2Drum(seq) {
-  const mvae = new MusicVAE(TAP2DRUM_CKPT);
-  await mvae.initialize();
+
+  if(!initialized )
+    return null
 
   // "Tapify" the inputs, collapsing them to hi-hat.
   let start = performance.now()
@@ -35,6 +43,6 @@ async function runTap2Drum(seq) {
   const sample = await mvae.sample(3)
   console.log('tap2drum-sample-time', start)
   console.log('tap2drum-samples', sample, true, true)
-  mvae.dispose()
+  //mvae.dispose()
   return recon
 }
