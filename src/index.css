@@ -1,0 +1,41 @@
+html,
+body,
+.App {
+  background: linear-gradient(to right, #010305, #131516);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+section {
+  padding: 10px;
+  margin-bottom: 40px;
+}
+
+.visualizer-container {
+  background: grey;
+  padding: 14px;
+  overflow-x: auto;
+  width: 80vw;
+}
+
+.visualizer-container canvas{
+  background: white;
+  margin: 0;
+}
+
+.transport{
+  height: 10px;
+  background: blue;
+  width: 960px;
+  margin: 10px 0;
+  position: relative;
+}
+
+#progress{
+  height: 10px;
+  background: red;
+  width: 10px;
+  position: absolute;
+}

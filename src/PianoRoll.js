@@ -1,31 +1,57 @@
-import {PianoRollCanvasVisualizer} from "@magenta/music/node/core"
+import Tone from 'tone'
 
-class PianoRoll extends PianoRollCanvasVisualizer {
+class PianoRoll {
 
   constructor(canvas){
-    const config = {
-          noteHeight: 6,
-          noteSpacing: 1,
-          pixelsPerTimeStep: 60,
-          noteRGB: '8, 41, 64',
-          activeNoteRGB: '240, 84, 119',
-          minPitch: 34,
-          maxPitch: 72,
-        };
-    const sequence = {notes:[],totalTime: 16}
-    super(sequence, canvas, config)
+    this.config = {
+      noteHeight: 6,
+      noteSpacing: 1,
+      pixelsPerTimeStep: 60,
+      noteRGB: '8, 41, 64',
+      activeNoteRGB: '240, 84, 119',
+      minPitch: 34,
+      maxPitch: 72,
+    }
+
+    this.height = (this.config.maxPitch - this.config.minPitch) * this.config.noteHeight
+    this.width = Tone.Time('8m') * this.config.pixelsPerTimeStep
+
+    // Initialize the canvas.
+    this.ctx = canvas.getContext('2d');
+
+    // Use the correct device pixel ratio so that the canvas isn't blurry
+    // on retina screens. See:
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio
+    const dpr = window.devicePixelRatio || 1;
+    if (this.ctx) {
+      this.ctx.canvas.width = dpr * this.width;
+      this.ctx.canvas.height = dpr * this.height;
+      // If we don't do this, then the canvas will look 2x bigger than we
+      // want to.
+      canvas.style.width = `${this.width}px`;
+      canvas.style.height = `${this.height}px`;
+      this.ctx.scale(dpr, dpr);
+    }
+
   }
 
-  update(seq){
-    this.noteSequence = seq
-    this.redraw()
+  getNotePosition(note, noteIndex) {
+       // Size of this note.
+       const x = (this.getNoteStartTime(note) * this.config.pixelsPerTimeStep)
+       const w = this.config.pixelsPerTimeStep *
+           (this.getNoteEndTime(note) - this.getNoteStartTime(note)) -
+           this.config.noteSpacing
+       // The canvas' y=0 is at the top, but a smaller pitch is actually
+       // lower, so we're kind of painting backwards.
+       const y = this.height -
+           ((note.pitch - this.config.minPitch) * this.config.noteHeight)
+       return { x, y, w, h: this.config.noteHeight }
   }
 
-
-  redraw() {
+  draw(notes) {
     this.clear()
-    for (let i = 0; i < this.noteSequence.notes.length; i++) {
-      const note = this.noteSequence.notes[i]
+    for (let i = 0; i < notes.length; i++) {
+      const note = notes[i]
       const size = this.getNotePosition(note, i)
       // Color of this note.
       const opacityBaseline = 0.2;  // Shift all the opacities up a little.
@@ -38,33 +64,26 @@ class PianoRoll extends PianoRollCanvasVisualizer {
     }
   }
 
-
-  getNotePosition(note, noteIndex) {
-    // Size of this note.
-    const x = (this.getNoteStartTime(note) * this.config.pixelsPerTimeStep);
-    const w = this.config.pixelsPerTimeStep *
-            (this.getNoteEndTime(note) - this.getNoteStartTime(note)) -
-        this.config.noteSpacing;
-
-    // The canvas' y=0 is at the top, but a smaller pitch is actually
-    // lower, so we're kind of painting backwards.
-    const y = this.height -
-        ((note.pitch - this.config.minPitch) * this.config.noteHeight);
-
-    return {x, y, w, h: this.config.noteHeight};
+  redrawNote(x, y, w, h, fill) {
+     this.ctx.fillStyle = fill
+     // Round values to the nearest integer to avoid partially filled pixels.
+     this.ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h))
   }
 
   getNoteStartTime(note) {
-    return Math.round(note.startTime * 100000000) / 100000000;
+    return Math.round(note.startTime * 100000000) / 100000000
   }
 
   getNoteEndTime(note) {
-    const endTime = note.endTime ? note.endTime : note.currTime
+    const seconds = Tone.Transport.seconds
+    let endTime = note.endTime ? note.endTime : Tone.Transport.seconds
+    endTime = (endTime>=note.startTime) ? endTime : (endTime+Tone.Time('8m'))
     return Math.round(endTime * 100000000) / 100000000
   }
 
-
-
+  clear() {
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height)
+  }
 
 }
 
