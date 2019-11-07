@@ -8,11 +8,15 @@ import MidiIO from "./MidiIO"
 import Recorder from "./Recorder"
 import PianoRoll from "./PianoRoll"
 import DrumKit from "./DrumKit"
+import MonoBass from "./MonoBass"
 
 const worker = new gWorker()
 const recorder = new Recorder()
 const midiPlayer = new MIDIPlayer()
 const midiIO = new MidiIO()
+const monoBass = new MonoBass()
+
+
 
 //get dom elements references
 const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
@@ -23,11 +27,12 @@ const progress = document.getElementById('progress')
 Tone.Transport.bpm.value = 120
 Tone.Transport.loop = true
 Tone.Transport.loopEnd = '8m'
-Tone.context.latencyHint = 'interactive'
-
+//Tone.context.latencyHint = 'interactive'
+Tone.context.latencyHint = 'fastest'
 
 const playDrum = (note) =>{
   //DrumKit.play(note)
+  const a = Tone.Frequency(note.pitch, "midi").toNote()
 }
 
 //initialize midi
@@ -35,7 +40,10 @@ midiIO.initialize().then(() => {
   midiIO.connectAllInputs()
   midiIO.onNoteOn(recorder.noteOn)
   midiIO.onNoteOff(recorder.noteOff)
-  midiIO.onNoteOn(playDrum)
+  //midiIO.onNoteOn(playDrum)
+  midiIO.onNoteOn(monoBass.noteOn)
+  midiIO.onNoteOff(monoBass.noteOff)
+
   Tone.Transport.start()
 })
 

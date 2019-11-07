@@ -27,7 +27,7 @@ section {
 
 .transport{
   height: 10px;
-  background: blue;
+  background: #ddd;
   width: 960px;
   margin: 10px 0;
   position: relative;
@@ -35,7 +35,8 @@ section {
 
 #progress{
   height: 10px;
-  background: red;
+  background: #666;
   width: 10px;
+  margin-left: -5px;
   position: absolute;
 }

@@ -1,8 +1,6 @@
 import {NoteSequence} from "@magenta/music/node/protobuf"
 import Tone from 'tone'
 
-const MILLIS_PER_SECOND = 1000
-
 class Recorder {
   constructor(){
     this.notes = []
