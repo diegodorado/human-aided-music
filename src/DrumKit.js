@@ -1,5 +1,5 @@
 import Tone from 'tone'
-import {midiMapping, reverseMidiMapping} from "./midiMapping"
+import {reverseMidiMapping} from "./midiMapping"
 
 const kick = new Tone.MembraneSynth().toMaster()
 const tomLow = new Tone

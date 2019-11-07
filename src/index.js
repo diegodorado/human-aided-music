@@ -1,7 +1,6 @@
 import './index.css'
 import * as serviceWorker from './serviceWorker';
-import {NoteSequence} from "@magenta/music/node/protobuf"
-import {sequences,MIDIPlayer} from "@magenta/music/node/core"
+import {MIDIPlayer} from "@magenta/music/node/core"
 import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
@@ -27,31 +26,30 @@ const generatingMarker = document.getElementById('generating')
 //Tone.context.latencyHint = 'interactive'
 Tone.context.latencyHint = 'fastest'
 
-const playDrum = (note) =>{
-  //DrumKit.play(note)
-  const a = Tone.Frequency(note.pitch, "midi").toNote()
-}
-
 //initialize midi
 midiIO.initialize().then(() => {
   midiIO.connectAllInputs()
   midiIO.onNoteOn(recorder.noteOn)
   midiIO.onNoteOff(recorder.noteOff)
-  //midiIO.onNoteOn(playDrum)
   midiIO.onNoteOn(monoBass.noteOn)
   midiIO.onNoteOff(monoBass.noteOff)
 
   Tone.Transport.start()
 })
 
+let generatedNotes = []
+
+//todo: get rid of this hardcoded 960px wide
+const getWidth = (normalized) => Math.floor(960*normalized)
 
 
 // a single function where to update visuals
 const	updateVisuals = (transport) =>{
   pianoRoll.draw(recorder.notes)
+  pianoRoll2.draw(generatedNotes)
+
   // gives a loop progress visual feedback
-  //todo: get rid of this hardcoded 960px wide
-  progressMarker.style = `left:${Math.floor(960*transport.progress)}px`
+  progressMarker.style = `left:${getWidth(transport.progress)}px`
   // call this fuction again on next frame
   requestAnimationFrame(()=>updateVisuals(transport))
 }
@@ -78,32 +76,25 @@ Tone.Transport.scheduleRepeat( (time) => {
   const t1 = prev_chunk*Tone.Time(measures/chunks,'m')
   const t2 = (prev_chunk+1)*Tone.Time(measures/chunks,'m')
 
+  //todo: trim endTime instead of strip
   const notes = recorder.notes.filter(
     n => n.endTime
          && (n.startTime < n.endTime)
          && (n.startTime >= t1 && n.startTime < t2 ))
 
-  const _notes = Array.from(notes, n=> Object.assign({}, n))
-  // Shift the sequence back to time 0
-  _notes.forEach(n => {
-      n.startTime -= t1
-      n.endTime -= t1
-  })
-
   // send notes to worker
-  worker.postMessage(_notes)
+  worker.postMessage({notes, timeOffset: t1, destination: next_chunk})
 
   //instead of scheduling visuals inside of here
 	//schedule a deferred callback with Tone.Draw
 	Tone.Draw.schedule(() =>{
 		//this callback is invoked from a requestAnimationFrame
 		//and will be invoked close to AudioContext time
-    generatingMarker.style = `width:${Math.floor(960/chunks)}px;left:${Math.floor(960*(next_chunk/chunks))}px`
-
-    seedMarker.style = `width:${Math.floor(960/chunks)}px;left:${Math.floor(960*(prev_chunk/chunks))}px`
-
-    console.log('one measure')
+    const w = `width:${getWidth(1/chunks)}px`
+    generatingMarker.style = `${w};left:${getWidth(next_chunk/chunks)}px`
+    seedMarker.style = `${w};left:${getWidth((prev_chunk/chunks))}px`
 	}, time) //use AudioContext time of the event
+
 }, Tone.Time(measures/chunks, 'm'))
 
 
@@ -118,29 +109,54 @@ Tone.Transport.scheduleRepeat( (time) => {
 }, '2n')
 
 
+Tone.Transport.scheduleRepeat( (time) => {
+  DrumKit.play({pitch:60, velocity:5})
+}, '1n')
+
+
+
+
+
 const setTempo = (qpm) =>{
   if (Tone.Transport.state === 'started')
     Tone.Transport.bpm.value = qpm
 }
 
-worker.addEventListener('message', (ev) => {
-  if(ev.data){
-    const seq = ev.data[0]
-    console.log(ev.data)
-    //pianoRoll2.update(seq)
+
+const onWorkerResponse = (ev) => {
+  const {ns, destination} = ev.data
+  if(ns){
+    // get time interval to replace generatedNotes
+    const t1 = destination*Tone.Time(measures/chunks,'m')
+    const t2 = (destination+1)*Tone.Time(measures/chunks,'m')
+
+    // filter out old chunk
+    generatedNotes = generatedNotes.filter(n => (n.startTime < t1 || n.startTime > t2 ))
+
+    const data = ns.notes.map(n => {return {time: n.startTime, n}})
+
+
+    //shift notes to destination chunk and add them
+    ns.notes.forEach(n=>{
+      n.startTime += t1
+      n.endTime += t1
+      generatedNotes.push(n)
+
+      Tone.Transport.scheduleOnce((time) =>{
+      	DrumKit.play(n)
+        pianoRoll2.drawNote(n, true)
+      }, n.startTime)
+
+    })
+
+
   }
-})
+  //console.log(ev.data)
+}
+
+worker.addEventListener('message', onWorkerResponse)
 
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.
 // Learn more about service workers: https://bit.ly/CRA-PWA
 serviceWorker.unregister();
-
-
-//how to create a scheduled part of drums
-const part = new Tone.Part(function(time, value){
-	//the value is an object which contains both the note and the velocity
-	console.log(time, value)
-}, [{"time" : 0, "note" : "C3", "velocity": 0.9},
-	   {"time" : "0:2", "note" : "C4", "velocity": 0.5}
-   ]) //.start(0)

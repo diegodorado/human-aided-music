@@ -65,9 +65,9 @@ class MidiIO {
 
     // Some MIDI controllers don't send a separate NOTE_OFF command.
     if (cmd === NOTE_OFF || (cmd === NOTE_ON && velocity === 0)) {
-      reactor.dispatchEvent('note_off',{pitch, velocity, timeStamp})
+      reactor.dispatchEvent('note_off',{pitch, velocity, timeStamp, device})
     } else if (cmd === NOTE_ON) {
-      reactor.dispatchEvent('note_on',{pitch, velocity, timeStamp})
+      reactor.dispatchEvent('note_on',{pitch, velocity, timeStamp, device})
     }
   }
 

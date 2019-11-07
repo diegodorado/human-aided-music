@@ -35,7 +35,7 @@ class PianoRoll {
 
   }
 
-  getNotePosition(note, noteIndex) {
+  getNotePosition(note) {
        // Size of this note.
        const x = (this.getNoteStartTime(note) * this.config.pixelsPerTimeStep)
        const w = this.config.pixelsPerTimeStep *
@@ -52,22 +52,21 @@ class PianoRoll {
     this.clear()
     for (let i = 0; i < notes.length; i++) {
       const note = notes[i]
-      const size = this.getNotePosition(note, i)
-      // Color of this note.
-      const opacityBaseline = 0.2;  // Shift all the opacities up a little.
-      const opacity = note.velocity ? note.velocity / 100 + opacityBaseline : 1;
-      const isActive = !note.endTime
-      const fill =
-          `rgba(${isActive ? this.config.activeNoteRGB : this.config.noteRGB},
-  ${opacity})`
-      this.redrawNote(size.x, size.y, size.w, size.h, fill)
+      this.drawNote(note, !note.endTime)
     }
   }
 
-  redrawNote(x, y, w, h, fill) {
+  drawNote(note, active) {
+      const size = this.getNotePosition(note)
+      // Color of this note.
+      const opacityBaseline = 0.2;  // Shift all the opacities up a little.
+      const opacity = note.velocity ? note.velocity / 100 + opacityBaseline : 1;
+      active |= !note.endTime
+      const fill =
+          `rgba(${active ? this.config.activeNoteRGB : this.config.noteRGB},
+  ${opacity})`
      this.ctx.fillStyle = fill
-     // Round values to the nearest integer to avoid partially filled pixels.
-     this.ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h))
+     this.ctx.fillRect(size.x, size.y, size.w, size.h)
   }
 
   getNoteStartTime(note) {
@@ -75,7 +74,6 @@ class PianoRoll {
   }
 
   getNoteEndTime(note) {
-    const seconds = Tone.Transport.seconds
     let endTime = note.endTime ? note.endTime : Tone.Transport.seconds
     endTime = (endTime>=note.startTime) ? endTime : (endTime+Tone.Time('8m'))
     return Math.round(endTime * 100000000) / 100000000
