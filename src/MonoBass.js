@@ -63,7 +63,12 @@ const getLastValue = (set) =>{
 class MonoBass {
 	active = true
 	setActive = (active) =>{
-
+		this.active = active
+		//release any active note
+		if(!active && onNotes.size>0){
+      this.triggerRelease()
+			onNotes.clear()
+		}
 	}
 
   noteOn = (note) =>{
@@ -80,6 +85,10 @@ class MonoBass {
   }
 
   noteOff = (note) =>{
+		if(!this.active)
+			return
+
+
     onNotes.delete(note.pitch)
 
     // triggerRelease?

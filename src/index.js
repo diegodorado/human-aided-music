@@ -11,6 +11,7 @@ import MonoBass from "./MonoBass"
 import {GUI} from 'dat.gui'
 
 
+/*APP OPTIONS*/
 const options = {
   tempo: 120,
   input: 'keyboard',
@@ -20,16 +21,31 @@ const options = {
   temperature: 1.0
 }
 
-const useSynthChanged = (value) => monoBass.active = value
 
+const worker = new gWorker()
+const recorder = new Recorder()
+const midiPlayer = new MIDIPlayer()
+const midiIO = new MidiIO()
+const monoBass = new MonoBass()
+
+//get dom elements references
+const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
+const pianoRoll2 = new PianoRoll(document.getElementById('pianoRoll2'))
+const progressMarker = document.getElementById('progress')
+const seedMarker = document.getElementById('seed')
+const generatingMarker = document.getElementById('generating')
+
+
+/*GUI STUFF*/
 const gui = new GUI()
 gui.add(options, 'tempo', 60, 180).name('Tempo')
-gui.add(options, 'useSynth').name('Use Synth').onChange(useSynthChanged)
+gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
 gui.add(options, 'playClick').name('Play Click')
 let input = gui.add(options, 'input',[])
 let output = gui.add(options, 'output',[])
 gui.add(options, 'temperature', 0.0, 2.0)
 
+/*midi devices changed handler*/
 const onDevicesChanged = (m) =>{
   const inputs = { 'Computer Keyboard': 'keyboard'}
   m.midiInputs.forEach(i => inputs[i.name] = i.id)
@@ -42,20 +58,6 @@ const onDevicesChanged = (m) =>{
 
 
 
-const worker = new gWorker()
-const recorder = new Recorder()
-const midiPlayer = new MIDIPlayer()
-const midiIO = new MidiIO()
-const monoBass = new MonoBass()
-
-
-
-//get dom elements references
-const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
-const pianoRoll2 = new PianoRoll(document.getElementById('pianoRoll2'))
-const progressMarker = document.getElementById('progress')
-const seedMarker = document.getElementById('seed')
-const generatingMarker = document.getElementById('generating')
 
 
 //Tone.context.latencyHint = 'interactive'
