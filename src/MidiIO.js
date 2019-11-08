@@ -3,15 +3,18 @@ import Reactor from './Reactor'
 const reactor = new Reactor()
 
 class MidiIO {
+  autoconnectInputs = false
 
   constructor(){
     this.midiInputs = []
     this.midiOutputs = []
     reactor.registerEvent('note_on')
     reactor.registerEvent('note_off')
+    reactor.registerEvent('devices_changed')
   }
 
-  async initialize() {
+  async initialize({autoconnectInputs = false}) {
+    this.autoconnectInputs = autoconnectInputs
     // Start up WebMidi.
     await (navigator)
         .requestMIDIAccess()
@@ -20,29 +23,60 @@ class MidiIO {
             (err) => console.log('Something went wrong', err))
   }
 
-  midiReady(midi) {
-    console.log('Initialized MidiIO');
+  onStateChange = (ev) =>{
+    const midi = ev.target
+    const inputs = midi.inputs.values()
+
+    const changed = (a,b) => a.length === b.length
+                    && a.sort().every((v, i) => v === b.sort()[i])
+
+    const i0 = this.midiInputs.map(i => i.id)
+    const o0 = this.midiOutputs.map(i => i.id)
+    this.refreshDevices(midi)
+    const i1 = this.midiInputs.map(i => i.id)
+    const o1 = this.midiOutputs.map(i => i.id)
+
+
+    if(changed(i0,i1) || changed(o0,o1) ){
+      reactor.dispatchEvent('devices_changed',this)
+      if(this.autoconnectInputs)
+        this.connectAllInputs()
+    }
+
+  }
+
+
+  refreshDevices = (midi) =>{
+    this.midiInputs = []
     const inputs = midi.inputs.values()
     for (let i = inputs.next(); i && !i.done;i = inputs.next())
       this.midiInputs.push(i.value)
 
+    this.midiOutputs = []
     const outputs = midi.outputs.values()
     for (let o = outputs.next(); o && !o.done;o = outputs.next())
       this.midiOutputs.push(o.value)
+  }
+
+
+  midiReady(midi) {
+    this.refreshDevices(midi)
+    midi.onstatechange = this.onStateChange
+    console.log('Initialized MidiIO')
+    if(this.autoconnectInputs)
+      this.connectAllInputs()
 
   }
 
   connectAllInputs() {
     // Start listening to MIDI messages.
     for (const input of this.midiInputs) {
-      input.onmidimessage = (event) => {
-        this.midiMessageReceived(event)
-      }
+      input.onmidimessage = this.midiMessageReceived
     }
   }
 
 
-  midiMessageReceived(event) {
+  midiMessageReceived = (event) => {
     // event.timeStamp doesn't seem to work reliably across all
     // apps and controllers (sometimes it isn't set, sometimes it doesn't
     // change between notes). Use the performance now timing, unless it exists.
@@ -77,6 +111,10 @@ class MidiIO {
 
   onNoteOff = (callback) =>{
     reactor.addEventListener('note_off', callback)
+  }
+
+  onDevicesChanged = (callback) =>{
+    reactor.addEventListener('devices_changed', callback)
   }
 
 

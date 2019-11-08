@@ -1,19 +1,54 @@
 import './index.css'
 import * as serviceWorker from './serviceWorker';
-import {MIDIPlayer} from "@magenta/music/node/core"
+import {SoundFontPlayer,MIDIPlayer} from "@magenta/music/node/core"
 import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
 import Recorder from "./Recorder"
 import PianoRoll from "./PianoRoll"
-import DrumKit from "./DrumKit"
+import DrumKit from "./DrumKit2"
 import MonoBass from "./MonoBass"
+import {GUI} from 'dat.gui'
+
+
+const options = {
+  tempo: 120,
+  input: 'keyboard',
+  output: 'webaudio',
+  useSynth: true,
+  playClick: false,
+  temperature: 1.0
+}
+
+const useSynthChanged = (value) => monoBass.active = value
+
+const gui = new GUI()
+gui.add(options, 'tempo', 60, 180).name('Tempo')
+gui.add(options, 'useSynth').name('Use Synth').onChange(useSynthChanged)
+gui.add(options, 'playClick').name('Play Click')
+let input = gui.add(options, 'input',[])
+let output = gui.add(options, 'output',[])
+gui.add(options, 'temperature', 0.0, 2.0)
+
+const onDevicesChanged = (m) =>{
+  const inputs = { 'Computer Keyboard': 'keyboard'}
+  m.midiInputs.forEach(i => inputs[i.name] = i.id)
+  input = input.options(inputs)
+
+  const outputs = { 'WebAudio Drum': 'webaudio'}
+  m.midiOutputs.forEach(i => outputs[i.name] = i.id)
+  output = output.options(outputs)
+}
+
+
 
 const worker = new gWorker()
 const recorder = new Recorder()
 const midiPlayer = new MIDIPlayer()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
+
+
 
 //get dom elements references
 const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
@@ -27,15 +62,38 @@ const generatingMarker = document.getElementById('generating')
 Tone.context.latencyHint = 'fastest'
 
 //initialize midi
-midiIO.initialize().then(() => {
-  midiIO.connectAllInputs()
+midiIO.initialize({autoconnectInputs:true}).then(() => {
   midiIO.onNoteOn(recorder.noteOn)
   midiIO.onNoteOff(recorder.noteOff)
   midiIO.onNoteOn(monoBass.noteOn)
   midiIO.onNoteOff(monoBass.noteOff)
+  midiIO.onDevicesChanged(onDevicesChanged)
 
   Tone.Transport.start()
 })
+
+const playDrum = (note,time) =>{
+  if(options.output==='webaudio'){
+    DrumKit.play(note)
+  }else{
+
+  }
+
+}
+
+
+const click = new Tone.MembraneSynth(
+      {pitchDecay: 0.008,envelope: {attack: 0.001, decay: 0.3, sustain: 0}}
+    ).toMaster()
+
+
+const playClick = (step) =>{
+  if(options.playClick){
+    click.triggerAttack((step===0) ? 'C6' : 'G5')
+  }
+}
+
+
 
 let generatedNotes = []
 
@@ -58,14 +116,12 @@ updateVisuals(Tone.Transport)
 
 //repeated event every one measure
 const measures = 8
-const chunks = 8
+const chunks = 4
 let next_chunk = 0
 //setup transport
 Tone.Transport.bpm.value = 120
 Tone.Transport.loop = true
 Tone.Transport.loopEnd = Tone.Time(measures, 'm')
-
-
 
 Tone.Transport.scheduleRepeat( (time) => {
   next_chunk++
@@ -109,9 +165,12 @@ Tone.Transport.scheduleRepeat( (time) => {
 }, '2n')
 
 
+let beatStep = 0
 Tone.Transport.scheduleRepeat( (time) => {
-  DrumKit.play({pitch:60, velocity:5})
-}, '1n')
+  playClick(beatStep)
+  beatStep++
+  beatStep%=4
+}, '4n')
 
 
 
@@ -137,13 +196,16 @@ const onWorkerResponse = (ev) => {
 
 
     //shift notes to destination chunk and add them
-    ns.notes.forEach(n=>{
+
+
+
+    ns.notes.filter(n => n.startTime < (t2-t1)).forEach(n=>{
       n.startTime += t1
       n.endTime += t1
       generatedNotes.push(n)
 
       Tone.Transport.scheduleOnce((time) =>{
-      	DrumKit.play(n)
+      	playDrum(n,time)
         pianoRoll2.drawNote(n, true)
       }, n.startTime)
 

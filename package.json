@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@magenta/music": "^1.11.0",
+    "dat.gui": "^0.7.6",
     "lodash": "^4.17.15",
     "react": "^16.9.0",
     "react-app-rewired": "^2.1.3",

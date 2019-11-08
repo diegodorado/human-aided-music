@@ -57,3 +57,8 @@ section {
   margin-left: -5px;
   position: absolute;
 }
+
+/* dat GUI overrides*/
+.dg .cr.string, .dg .cr.boolean ,.dg .cr.color , .dg .cr.function ,.dg .cr.number {
+  border-left: 0 !important;
+}

@@ -3,7 +3,7 @@ import {NoteSequence} from "@magenta/music/node/protobuf"
 import {sequences} from "@magenta/music/node/core"
 
 const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoints'
-const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}/music_vae/groovae_tap2drum_2bar`;
+const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}/music_vae/groovae_tap2drum_2bar`
 
 const mvae = new MusicVAE(TAP2DRUM_CKPT)
 
@@ -26,12 +26,12 @@ self.addEventListener('message', (ev)=>{
     })
 
     const ns = NoteSequence.create({notes})
-    const qns = sequences.quantizeNoteSequence(ns,4)
-    postMessage({ns: qns, destination})
+    //const qns = sequences.quantizeNoteSequence(ns,4)
 
-    //runTap2Drum(ev.data).then((data) => {
-    //  postMessage(data)
-    //})
+    runTap2Drum(ns).then((data) => {
+       postMessage({ns: data[0], destination})
+      //postMessage(data)
+    })
   } catch (err) {
     console.error(err);
   }
@@ -39,24 +39,28 @@ self.addEventListener('message', (ev)=>{
 
 async function runTap2Drum(seq) {
 
-
   // "Tapify" the inputs, collapsing them to hi-hat.
   let start = performance.now()
+/*
+
   const input = await mvae.dataConverter.toNoteSequence(mvae.dataConverter.toTensor(seq))
-  console.log('tap2drum-inputs', input, true)
-  console.log('tap2drum-convert-time', start)
+  const convertTime = performance.now()-start
 
   start = performance.now()
   const z = await mvae.encode([input])
   const recon = await mvae.decode(z)
   z.dispose()
-  console.log('tap2drum-recon-time', start)
-  console.log('tap2drum-recon', recon, true, true)
+  //console.log('tap2drum-recon', recon, true, true)
+  const reconTime = performance.now()-start
+
+*/
 
   start = performance.now()
   const sample = await mvae.sample(3)
-  console.log('tap2drum-sample-time', start)
-  console.log('tap2drum-samples', sample, true, true)
+  // console.log('tap2drum-samples', sample, true, true)
+  const sampleTime = performance.now()-start
+
+  //console.log("convert %d, recon %d and sample %d",convertTime,reconTime,sampleTime )
   //mvae.dispose()
-  return recon
+  return sample // recon
 }
