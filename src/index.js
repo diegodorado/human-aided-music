@@ -29,6 +29,15 @@ const monoBass = new MonoBass()
 const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
 
 
+
+
+const setTempo = (qpm) =>{
+  if (Tone.Transport.state === 'started')
+    Tone.Transport.bpm.value = qpm
+}
+
+
+
 keyboard.down( (note) => {
   if (options.input === 'keyboard'){
     const data = { pitch: note.note, velocity:100}
@@ -62,7 +71,7 @@ const gui = new GUI({hideable:false, closeOnTop:true})
 console.log(GUI)
 //gui.remember(options)
 gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove']).name('Strategy')
-gui.add(options, 'tempo', 60, 180).name('Tempo')
+gui.add(options, 'tempo', 60, 180).name('Tempo').onChange(setTempo)
 gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
 gui.add(options, 'playClick').name('Play Click')
 let input = gui.add(options, 'input',[])
@@ -227,11 +236,6 @@ Tone.Transport.scheduleRepeat( (time) => {
 }, '4n')
 
 
-
-const setTempo = (qpm) =>{
-  if (Tone.Transport.state === 'started')
-    Tone.Transport.bpm.value = qpm
-}
 
 
 const onWorkerResponse = (ev) => {
