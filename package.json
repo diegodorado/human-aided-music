@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@magenta/music": "^1.11.0",
+    "audiokeys": "^0.1.1",
     "dat.gui": "^0.7.6",
     "lodash": "^4.17.15",
     "react": "^16.9.0",

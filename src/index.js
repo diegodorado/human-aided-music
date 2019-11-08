@@ -9,7 +9,7 @@ import PianoRoll from "./PianoRoll"
 import DrumKit from "./DrumKit2"
 import MonoBass from "./MonoBass"
 import {GUI} from 'dat.gui'
-
+import AudioKeys from 'audiokeys'
 
 /*APP OPTIONS*/
 const options = {
@@ -28,6 +28,25 @@ const recorder = new Recorder()
 const midiPlayer = new MIDIPlayer()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
+const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
+
+
+keyboard.down( (note) => {
+  if (options.input === 'keyboard'){
+    const data = { pitch: note.note, velocity:100}
+    recorder.noteOn(data)
+    monoBass.noteOn(data)
+  }
+})
+
+keyboard.up( (note) => {
+  if (options.input === 'keyboard'){
+    const data = { pitch: note.note, velocity:0}
+    recorder.noteOff(data)
+    monoBass.noteOff(data)
+  }
+})
+
 
 //get dom elements references
 const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
@@ -84,15 +103,23 @@ midiIO.initialize({autoconnectInputs:true}).then(() => {
     if (options.input === data.device.id || options.input === 'all')
       recorder.noteOff(data)
   })
-  midiIO.onNoteOn(monoBass.noteOn)
-  midiIO.onNoteOff(monoBass.noteOff)
+  midiIO.onNoteOn((data) => {
+    if (options.input === data.device.id || options.input === 'all')
+      monoBass.noteOn(data)
+  })
+  midiIO.onNoteOff((data) => {
+    if (options.input === data.device.id || options.input === 'all')
+      monoBass.noteOff(data)
+  })
   midiIO.onDevicesChanged(onDevicesChanged)
 
   Tone.Transport.start()
 })
 
 const playDrum = (note,time) =>{
-  if(options.output==='webaudio'){
+  if(options.output==='none'){
+    return
+  }else if(options.output==='webaudio'){
     DrumKit.play(note)
   }else{
     const device = midiIO.getOutputById(options.output)

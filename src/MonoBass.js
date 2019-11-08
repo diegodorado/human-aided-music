@@ -77,7 +77,6 @@ class MonoBass {
 
     if(onNotes.has(note.pitch)){
       console.log('note on twice!')
-      return
     }
     const triggerAttack = (onNotes.size ===0)
     this.setNote(note.pitch, triggerAttack)
