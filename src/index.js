@@ -1,6 +1,6 @@
 import './index.css'
 import * as serviceWorker from './serviceWorker';
-import {SoundFontPlayer,MIDIPlayer} from "@magenta/music/node/core"
+import {MIDIPlayer} from "@magenta/music/node/core"
 import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
@@ -13,6 +13,7 @@ import {GUI} from 'dat.gui'
 
 /*APP OPTIONS*/
 const options = {
+  strategy: 'generate',
   tempo: 120,
   input: 'keyboard',
   output: 'webaudio',
@@ -37,7 +38,13 @@ const generatingMarker = document.getElementById('generating')
 
 
 /*GUI STUFF*/
-const gui = new GUI()
+GUI.DEFAULT_WIDTH = 320
+GUI.TEXT_CLOSED = 'Colapse'
+GUI.TEXT_OPEN = 'Expand'
+const gui = new GUI({hideable:false, closeOnTop:true})
+console.log(GUI)
+//gui.remember(options)
+gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove']).name('Strategy')
 gui.add(options, 'tempo', 60, 180).name('Tempo')
 gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
 gui.add(options, 'playClick').name('Play Click')
@@ -47,11 +54,16 @@ gui.add(options, 'temperature', 0.0, 2.0)
 
 /*midi devices changed handler*/
 const onDevicesChanged = (m) =>{
-  const inputs = { 'Computer Keyboard': 'keyboard'}
+  console.log('onDevicesChanged')
+
+  const inputs = { 'All': 'all',  'Computer Keyboard': 'keyboard'}
   m.midiInputs.forEach(i => inputs[i.name] = i.id)
+  // unfortunatelly, dat.gui has no means of
+  // updating controller options without recreating it
+  // so, onchange handler has to be bound here
   input = input.options(inputs)
 
-  const outputs = { 'WebAudio Drum': 'webaudio'}
+  const outputs = { 'No Output': 'none','WebAudio Drum': 'webaudio'}
   m.midiOutputs.forEach(i => outputs[i.name] = i.id)
   output = output.options(outputs)
 }
@@ -62,11 +74,16 @@ const onDevicesChanged = (m) =>{
 
 //Tone.context.latencyHint = 'interactive'
 Tone.context.latencyHint = 'fastest'
-
 //initialize midi
 midiIO.initialize({autoconnectInputs:true}).then(() => {
-  midiIO.onNoteOn(recorder.noteOn)
-  midiIO.onNoteOff(recorder.noteOff)
+  midiIO.onNoteOn((data) => {
+    if (options.input === data.device.id || options.input === 'all')
+      recorder.noteOn(data)
+  })
+  midiIO.onNoteOff((data) => {
+    if (options.input === data.device.id || options.input === 'all')
+      recorder.noteOff(data)
+  })
   midiIO.onNoteOn(monoBass.noteOn)
   midiIO.onNoteOff(monoBass.noteOff)
   midiIO.onDevicesChanged(onDevicesChanged)
@@ -78,10 +95,20 @@ const playDrum = (note,time) =>{
   if(options.output==='webaudio'){
     DrumKit.play(note)
   }else{
+    const device = midiIO.getOutputById(options.output)
+    const length = (note.endTime - note.startTime) * 1000 // in ms.
+    note.velocity |= 100
+    device.send([0x90, note.pitch,note.velocity])
+    device.send([0x80, note.pitch,0]
+      ,window.performance.now() + length)
 
   }
 
 }
+
+
+
+
 
 
 const click = new Tone.MembraneSynth(
@@ -141,7 +168,7 @@ Tone.Transport.scheduleRepeat( (time) => {
          && (n.startTime >= t1 && n.startTime < t2 ))
 
   // send notes to worker
-  worker.postMessage({notes, timeOffset: t1, destination: next_chunk})
+  worker.postMessage({strategy: options.strategy, notes, timeOffset: t1, destination: next_chunk})
 
   //instead of scheduling visuals inside of here
 	//schedule a deferred callback with Tone.Draw
@@ -196,11 +223,7 @@ const onWorkerResponse = (ev) => {
 
     const data = ns.notes.map(n => {return {time: n.startTime, n}})
 
-
     //shift notes to destination chunk and add them
-
-
-
     ns.notes.filter(n => n.startTime < (t2-t1)).forEach(n=>{
       n.startTime += t1
       n.endTime += t1
@@ -215,7 +238,6 @@ const onWorkerResponse = (ev) => {
 
 
   }
-  //console.log(ev.data)
 }
 
 worker.addEventListener('message', onWorkerResponse)

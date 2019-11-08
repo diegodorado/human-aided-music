@@ -59,6 +59,10 @@ section {
 }
 
 /* dat GUI overrides*/
+.dg.main .close-button {
+  line-height: 24px;
+  height: 24px;
+}
 .dg .cr.string, .dg .cr.boolean ,.dg .cr.color , .dg .cr.function ,.dg .cr.number {
   border-left: 0 !important;
 }

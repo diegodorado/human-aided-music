@@ -2,6 +2,10 @@ import Reactor from './Reactor'
 
 const reactor = new Reactor()
 
+// MIDI commands we care about. See
+const NOTE_ON = 9
+const NOTE_OFF = 8
+
 class MidiIO {
   autoconnectInputs = false
 
@@ -88,9 +92,6 @@ class MidiIO {
     }
     const timeStamp = timeStampOffset + performance.timing.navigationStart;
 
-    // MIDI commands we care about. See
-    const NOTE_ON = 9
-    const NOTE_OFF = 8
 
     const cmd = event.data[0] >> 4;
     const pitch = event.data[1];
@@ -116,6 +117,29 @@ class MidiIO {
   onDevicesChanged = (callback) =>{
     reactor.addEventListener('devices_changed', callback)
   }
+
+  sendNote = (device, note, time,duration) =>{
+    //device.send([0x90, note.pitch,note.velocity],time)
+    //device.send([0x80, note.pitch,note.velocity],time)
+  }
+
+  getInputById = (id) =>{
+    for (let i of this.midiInputs)
+      if (i.id === id) return i
+  }
+
+  getOutputById = (id) =>{
+    for (let i of this.midiOutputs)
+      if (i.id === id) return i
+  }
+
+
+
+
+
+
+
+
 
 
 }

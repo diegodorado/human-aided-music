@@ -2,14 +2,24 @@ import {MusicVAE} from "@magenta/music/node/music_vae"
 import {NoteSequence} from "@magenta/music/node/protobuf"
 import {sequences} from "@magenta/music/node/core"
 
-const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoints'
-const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}/music_vae/groovae_tap2drum_2bar`
+const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/'
+const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}groovae_tap2drum_2bar`
+const DRUM2BAR_CKPT = `${CHECKPOINTS_DIR}drums_2bar_lokl_small`
+const GROOVE2BAR_CKPT = `${CHECKPOINTS_DIR}groovae_2bar_humanize`
 
-const mvae = new MusicVAE(TAP2DRUM_CKPT)
+const tapVae = new MusicVAE(TAP2DRUM_CKPT)
+const drumVae = new MusicVAE(DRUM2BAR_CKPT)
+const grooVae = new MusicVAE(GROOVE2BAR_CKPT)
 
 let initialized = false
 
-mvae.initialize().then( () => initialized = true)
+// initialize all models
+Promise.all([
+    drumVae.initialize(),
+    tapVae.initialize(),
+    grooVae.initialize(),
+  ]).then( () => initialized = true)
+
 
 // receive a note sequence, and return another one
 self.addEventListener('message', (ev)=>{
@@ -18,7 +28,7 @@ self.addEventListener('message', (ev)=>{
 
 
   try {
-    const {notes, timeOffset, destination} = ev.data
+    const {strategy, notes, timeOffset, destination} = ev.data
     // Shift the sequence back to time 0
     notes.forEach(n => {
        n.startTime -= timeOffset
@@ -27,40 +37,58 @@ self.addEventListener('message', (ev)=>{
 
     const ns = NoteSequence.create({notes})
     //const qns = sequences.quantizeNoteSequence(ns,4)
+    //postMessage({ns, destination})
 
-    runTap2Drum(ns).then((data) => {
-       postMessage({ns: data[0], destination})
-      //postMessage(data)
-    })
+    switch (strategy) {
+      case 'generate':
+        generateDrum()
+          .then((ns) => postMessage({ns, destination}))
+        break;
+      case 'generate_groove':
+        generateDrumWithGroove()
+          .then((ns) => postMessage({ns, destination}))
+        break;
+      case 'groove':
+        groove()
+          .then((ns) => postMessage({ns, destination}))
+        break;
+      case 'tap2drum':
+        tap2Drum(ns)
+          .then((ns) => postMessage({ns, destination}))
+        break;
+      default:
+        break;
+    }
+
   } catch (err) {
     console.error(err);
   }
 })
 
-async function runTap2Drum(seq) {
+async function tap2Drum(seq) {
+  const ts = tapVae.dataConverter.toTensor(seq)
+  const input = await tapVae.dataConverter.toNoteSequence(ts)
+  const z = await tapVae.encode([input])
+  const decoded = await tapVae.decode(z)
+  return decoded[0]
+}
 
-  // "Tapify" the inputs, collapsing them to hi-hat.
-  let start = performance.now()
-/*
+async function generateDrum() {
+  const sample = await drumVae.sample(1)
+  const ns = sequences.unquantizeSequence(sample[0])
+  return ns
+}
 
-  const input = await mvae.dataConverter.toNoteSequence(mvae.dataConverter.toTensor(seq))
-  const convertTime = performance.now()-start
 
-  start = performance.now()
-  const z = await mvae.encode([input])
-  const recon = await mvae.decode(z)
-  z.dispose()
-  //console.log('tap2drum-recon', recon, true, true)
-  const reconTime = performance.now()-start
+async function generateDrumWithGroove() {
+  const sample = await drumVae.sample(1)
+  const z = await grooVae.encode(sample)
+  const decoded = await grooVae.decode(z)
+  return decoded[0]
+}
 
-*/
 
-  start = performance.now()
-  const sample = await mvae.sample(3)
-  // console.log('tap2drum-samples', sample, true, true)
-  const sampleTime = performance.now()-start
-
-  //console.log("convert %d, recon %d and sample %d",convertTime,reconTime,sampleTime )
-  //mvae.dispose()
-  return sample // recon
+async function groove() {
+  const sample = await grooVae.sample(1)
+  return sample[0]
 }

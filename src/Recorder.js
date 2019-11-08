@@ -2,6 +2,7 @@ import {NoteSequence} from "@magenta/music/node/protobuf"
 import Tone from 'tone'
 
 class Recorder {
+
   constructor(){
     this.notes = []
     this.onNotes = new Map()
