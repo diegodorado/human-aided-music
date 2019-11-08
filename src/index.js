@@ -1,6 +1,5 @@
 import './index.css'
 import * as serviceWorker from './serviceWorker';
-import {MIDIPlayer} from "@magenta/music/node/core"
 import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
@@ -25,7 +24,6 @@ const options = {
 
 const worker = new gWorker()
 const recorder = new Recorder()
-const midiPlayer = new MIDIPlayer()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
 const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
@@ -230,8 +228,6 @@ Tone.Transport.scheduleRepeat( (time) => {
 
 
 
-
-
 const setTempo = (qpm) =>{
   if (Tone.Transport.state === 'started')
     Tone.Transport.bpm.value = qpm
@@ -247,8 +243,6 @@ const onWorkerResponse = (ev) => {
 
     // filter out old chunk
     generatedNotes = generatedNotes.filter(n => (n.startTime < t1 || n.startTime > t2 ))
-
-    const data = ns.notes.map(n => {return {time: n.startTime, n}})
 
     //shift notes to destination chunk and add them
     ns.notes.filter(n => n.startTime < (t2-t1)).forEach(n=>{
