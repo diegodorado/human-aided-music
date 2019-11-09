@@ -1,5 +1,5 @@
-import './index.css'
-import * as serviceWorker from './serviceWorker';
+import './index.sass'
+import * as serviceWorker from './serviceWorker'
 import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
@@ -27,9 +27,6 @@ const recorder = new Recorder()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
 const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
-
-
-
 
 
 
