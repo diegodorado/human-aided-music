@@ -1,4 +1,5 @@
 import {MusicVAE} from "@magenta/music/node/music_vae"
+import {MusicRNN} from "@magenta/music/node/music_rnn"
 import {NoteSequence} from "@magenta/music/node/protobuf"
 import {sequences} from "@magenta/music/node/core"
 
@@ -6,10 +7,14 @@ const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoin
 const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}groovae_tap2drum_2bar`
 const DRUM2BAR_CKPT = `${CHECKPOINTS_DIR}drums_2bar_lokl_small`
 const GROOVE2BAR_CKPT = `${CHECKPOINTS_DIR}groovae_2bar_humanize`
+const DRUM_RNN_CKPT = `https://storage.googleapis.com/download.magenta.tensorflow.org/tfjs_checkpoints/music_rnn/drum_kit_rnn`
+
+
 
 const tapVae = new MusicVAE(TAP2DRUM_CKPT)
 const drumVae = new MusicVAE(DRUM2BAR_CKPT)
 const grooVae = new MusicVAE(GROOVE2BAR_CKPT)
+const continueRNN = new MusicRNN(DRUM_RNN_CKPT)
 
 let initialized = false
 
@@ -18,6 +23,7 @@ Promise.all([
     drumVae.initialize(),
     tapVae.initialize(),
     grooVae.initialize(),
+    continueRNN.initialize(),
   ]).then( () => initialized = true)
 
 
@@ -36,8 +42,6 @@ self.addEventListener('message', (ev)=>{
     })
 
     const ns = NoteSequence.create({notes})
-    //const qns = sequences.quantizeNoteSequence(ns,4)
-    //postMessage({ns, destination})
 
     switch (strategy) {
       case 'generate':
@@ -54,6 +58,10 @@ self.addEventListener('message', (ev)=>{
         break;
       case 'tap2drum':
         tap2Drum(ns)
+          .then((ns) => postMessage({ns, destination}))
+        break;
+      case 'continue':
+        continueBeat(ns)
           .then((ns) => postMessage({ns, destination}))
         break;
       default:
@@ -91,4 +99,13 @@ async function generateDrumWithGroove() {
 async function groove() {
   const sample = await grooVae.sample(1)
   return sample[0]
+}
+
+
+
+async function continueBeat(ns) {
+  ns.totalTime = 4
+  const qns = sequences.quantizeNoteSequence(ns,4)
+  const result = await continueRNN.continueSequence(qns, 32, 1.0)
+  return sequences.unquantizeSequence(result)
 }

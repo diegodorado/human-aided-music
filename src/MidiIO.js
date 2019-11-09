@@ -29,7 +29,6 @@ class MidiIO {
 
   onStateChange = (ev) =>{
     const midi = ev.target
-    const inputs = midi.inputs.values()
 
     const changed = (a,b) => a.length === b.length
                     && a.sort().every((v, i) => v === b.sort()[i])

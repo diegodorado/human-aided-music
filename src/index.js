@@ -68,9 +68,8 @@ GUI.DEFAULT_WIDTH = 320
 GUI.TEXT_CLOSED = 'Colapse'
 GUI.TEXT_OPEN = 'Expand'
 const gui = new GUI({hideable:false, closeOnTop:true})
-console.log(GUI)
 //gui.remember(options)
-gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove']).name('Strategy')
+gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue']).name('Strategy')
 gui.add(options, 'tempo', 60, 180).name('Tempo').onChange(setTempo)
 gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
 gui.add(options, 'playClick').name('Play Click')
@@ -131,7 +130,9 @@ const playDrum = (note,time) =>{
   }else{
     const device = midiIO.getOutputById(options.output)
     const length = (note.endTime - note.startTime) * 1000 // in ms.
+    // ensure defaults
     note.velocity |= 100
+    // send note on and delayed note off
     device.send([0x90, note.pitch,note.velocity])
     device.send([0x80, note.pitch,0]
       ,window.performance.now() + length)
@@ -140,15 +141,9 @@ const playDrum = (note,time) =>{
 
 }
 
-
-
-
-
-
 const click = new Tone.MembraneSynth(
       {pitchDecay: 0.008,envelope: {attack: 0.001, decay: 0.3, sustain: 0}}
     ).toMaster()
-
 
 const playClick = (step) =>{
   if(options.playClick){
@@ -168,7 +163,6 @@ const getWidth = (normalized) => Math.floor(960*normalized)
 const	updateVisuals = (transport) =>{
   pianoRoll.draw(recorder.notes)
   pianoRoll2.draw(generatedNotes)
-
   // gives a loop progress visual feedback
   progressMarker.style = `left:${getWidth(transport.progress)}px`
   // call this fuction again on next frame
@@ -182,21 +176,26 @@ const measures = 8
 const chunks = 4
 let next_chunk = 0
 //setup transport
-Tone.Transport.bpm.value = 120
+Tone.Transport.bpm.value = options.tempo
 Tone.Transport.loop = true
 Tone.Transport.loopEnd = Tone.Time(measures, 'm')
 
 Tone.Transport.scheduleRepeat( (time) => {
   next_chunk++
   next_chunk %= chunks
-  const prev_chunk = (next_chunk-2+chunks) % chunks
+
+  // which chunk depends on strategy
+  const chunk = (next_chunk- ((options.strategy==='continue')? 1: 2)+chunks) % chunks
 
   // get time interval to filter recorder notes as seed
-  const t1 = prev_chunk*Tone.Time(measures/chunks,'m')
-  const t2 = (prev_chunk+1)*Tone.Time(measures/chunks,'m')
+  const t1 = chunk*Tone.Time(measures/chunks,'m')
+  const t2 = (chunk+1)*Tone.Time(measures/chunks,'m')
+
+  // source ns depends on strategy
+  const source = (options.strategy==='continue') ? generatedNotes : recorder.notes
 
   //todo: trim endTime instead of strip
-  const notes = recorder.notes.filter(
+  const notes = source.filter(
     n => n.endTime
          && (n.startTime < n.endTime)
          && (n.startTime >= t1 && n.startTime < t2 ))
@@ -211,7 +210,7 @@ Tone.Transport.scheduleRepeat( (time) => {
 		//and will be invoked close to AudioContext time
     const w = `width:${getWidth(1/chunks)}px`
     generatingMarker.style = `${w};left:${getWidth(next_chunk/chunks)}px`
-    seedMarker.style = `${w};left:${getWidth((prev_chunk/chunks))}px`
+    seedMarker.style = `${w};left:${getWidth((chunk/chunks))}px`
 	}, time) //use AudioContext time of the event
 
 }, Tone.Time(measures/chunks, 'm'))
