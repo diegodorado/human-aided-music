@@ -41,9 +41,11 @@ module.exports = {
   output: {
     path: __dirname + '/public',
     publicPath: '/',
-    filename: 'app.js'
+    filename: 'app.js',
+    //globalObject: 'self'
   },
   devServer: {
     contentBase: './public'
-  }
+  },
+  devtool: 'source-map'
 };
