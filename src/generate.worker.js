@@ -15,6 +15,7 @@ const tapVae = new MusicVAE(TAP2DRUM_CKPT)
 const drumVae = new MusicVAE(DRUM2BAR_CKPT)
 const grooVae = new MusicVAE(GROOVE2BAR_CKPT)
 const continueRNN = new MusicRNN(DRUM_RNN_CKPT)
+const stepsPerQuarter = 4
 
 let initialized = false
 
@@ -34,7 +35,7 @@ self.addEventListener('message', (ev)=>{
 
 
   try {
-    const {strategy, notes, timeOffset, destination} = ev.data
+    const {qpm,temperature,strategy, notes, timeOffset, destination} = ev.data
     // Shift the sequence back to time 0
     notes.forEach(n => {
        n.startTime -= timeOffset
@@ -45,23 +46,27 @@ self.addEventListener('message', (ev)=>{
 
     switch (strategy) {
       case 'generate':
-        generateDrum()
+        generateDrum(ns,temperature, stepsPerQuarter, qpm)
           .then((ns) => postMessage({ns, destination}))
         break;
       case 'generate_groove':
-        generateDrumWithGroove()
+        generateDrumWithGroove(ns,temperature, stepsPerQuarter, qpm)
           .then((ns) => postMessage({ns, destination}))
         break;
       case 'groove':
-        groove()
+        groove(ns,temperature, stepsPerQuarter, qpm)
           .then((ns) => postMessage({ns, destination}))
         break;
       case 'tap2drum':
-        tap2Drum(ns)
+        tap2Drum(ns,temperature, stepsPerQuarter, qpm)
           .then((ns) => postMessage({ns, destination}))
         break;
       case 'continue':
-        continueBeat(ns)
+        continueBeat(ns,temperature, stepsPerQuarter, qpm)
+          .then((ns) => postMessage({ns, destination}))
+        break;
+      case 'continue_groove':
+        continueGroove(ns,temperature, stepsPerQuarter, qpm)
           .then((ns) => postMessage({ns, destination}))
         break;
       default:
@@ -73,39 +78,51 @@ self.addEventListener('message', (ev)=>{
   }
 })
 
-async function tap2Drum(seq) {
-  const ts = tapVae.dataConverter.toTensor(seq)
+async function tap2Drum(ns,temperature, stepsPerQuarter, qpm) {
+  const ts = tapVae.dataConverter.toTensor(ns)
   const input = await tapVae.dataConverter.toNoteSequence(ts)
   const z = await tapVae.encode([input])
-  const decoded = await tapVae.decode(z)
+  const decoded = await tapVae.decode(z,temperature, null, stepsPerQuarter, qpm)
   return decoded[0]
 }
 
-async function generateDrum() {
-  const sample = await drumVae.sample(1)
-  const ns = sequences.unquantizeSequence(sample[0])
-  return ns
+
+
+async function generateDrum(ns,temperature, stepsPerQuarter, qpm) {
+  const sample = await drumVae.sample(1, temperature, null, stepsPerQuarter, qpm)
+  return sequences.unquantizeSequence(sample[0])
 }
 
 
-async function generateDrumWithGroove() {
-  const sample = await drumVae.sample(1)
+async function generateDrumWithGroove(ns,temperature, stepsPerQuarter, qpm) {
+  const sample = await drumVae.sample(1, temperature, null, stepsPerQuarter, qpm)
   const z = await grooVae.encode(sample)
-  const decoded = await grooVae.decode(z)
+  const decoded = await grooVae.decode(z,temperature, null, stepsPerQuarter, qpm)
   return decoded[0]
 }
 
 
-async function groove() {
-  const sample = await grooVae.sample(1)
+async function groove(ns,temperature, stepsPerQuarter, qpm) {
+  const sample = await grooVae.sample(1, temperature, null, stepsPerQuarter, qpm)
   return sample[0]
 }
 
 
 
-async function continueBeat(ns) {
-  ns.totalTime = 4
-  const qns = sequences.quantizeNoteSequence(ns,4)
-  const result = await continueRNN.continueSequence(qns, 32, 1.0)
+async function continueBeat(ns,temperature, stepsPerQuarter, qpm) {
+  ns.totalTime = 8
+  const qns = sequences.quantizeNoteSequence(ns,stepsPerQuarter)
+  const result = await continueRNN.continueSequence(qns, 32, temperature)
   return sequences.unquantizeSequence(result)
+}
+
+
+
+async function continueGroove(ns,temperature, stepsPerQuarter, qpm) {
+  ns.totalTime = 8
+  const qns = sequences.quantizeNoteSequence(ns,stepsPerQuarter)
+  const cont = await continueRNN.continueSequence(qns, 32, temperature)
+  const z = await grooVae.encode([cont])
+  const decoded = await grooVae.decode(z,temperature, null, stepsPerQuarter, qpm)
+  return decoded[0]
 }

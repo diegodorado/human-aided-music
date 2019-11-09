@@ -1,12 +1,11 @@
 import Tone from 'tone'
 
 class PianoRoll {
-
   constructor(canvas){
     this.config = {
       noteHeight: 6,
       noteSpacing: 1,
-      pixelsPerTimeStep: 60,
+      pixelsWide: 960,
       noteRGB: '8, 41, 64',
       activeNoteRGB: '240, 84, 119',
       minPitch: 34,
@@ -14,39 +13,16 @@ class PianoRoll {
     }
 
     this.height = (this.config.maxPitch - this.config.minPitch) * this.config.noteHeight
-    this.width = Tone.Time('8m') * this.config.pixelsPerTimeStep
 
     // Initialize the canvas.
     this.ctx = canvas.getContext('2d');
-
-    // Use the correct device pixel ratio so that the canvas isn't blurry
-    // on retina screens. See:
-    // https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio
-    const dpr = window.devicePixelRatio || 1;
     if (this.ctx) {
-      this.ctx.canvas.width = dpr * this.width;
-      this.ctx.canvas.height = dpr * this.height;
-      // If we don't do this, then the canvas will look 2x bigger than we
-      // want to.
-      canvas.style.width = `${this.width}px`;
-      canvas.style.height = `${this.height}px`;
-      this.ctx.scale(dpr, dpr);
+      this.ctx.canvas.width = this.config.pixelsWide
+      this.ctx.canvas.height = this.height;
     }
 
   }
 
-  getNotePosition(note) {
-       // Size of this note.
-       const x = (this.getNoteStartTime(note) * this.config.pixelsPerTimeStep)
-       const w = this.config.pixelsPerTimeStep *
-           (this.getNoteEndTime(note) - this.getNoteStartTime(note)) -
-           this.config.noteSpacing
-       // The canvas' y=0 is at the top, but a smaller pitch is actually
-       // lower, so we're kind of painting backwards.
-       const y = this.height -
-           ((note.pitch - this.config.minPitch) * this.config.noteHeight)
-       return { x, y, w, h: this.config.noteHeight }
-  }
 
   draw(notes) {
     this.clear()
@@ -69,14 +45,27 @@ class PianoRoll {
      this.ctx.fillRect(size.x, size.y, size.w, size.h)
   }
 
-  getNoteStartTime(note) {
-    return Math.round(note.startTime * 100000000) / 100000000
+
+  getNotePosition(note) {
+       // Size of this note.
+       const x = (this.getNoteStart(note) * this.config.pixelsWide)
+       const w = this.config.pixelsWide *
+           (this.getNoteEnd(note) - this.getNoteStart(note))
+       // The canvas' y=0 is at the top, but a smaller pitch is actually
+       // lower, so we're kind of painting backwards.
+       const y = this.height -
+           ((note.pitch - this.config.minPitch) * this.config.noteHeight)
+       return { x, y, w, h: this.config.noteHeight }
   }
 
-  getNoteEndTime(note) {
+  getNoteStart(note) {
+    return Math.round(note.startTime/Tone.Time('8m') * 100000000) / 100000000
+  }
+
+  getNoteEnd(note) {
     let endTime = note.endTime ? note.endTime : Tone.Transport.seconds
     endTime = (endTime>=note.startTime) ? endTime : (endTime+Tone.Time('8m'))
-    return Math.round(endTime * 100000000) / 100000000
+    return Math.round(endTime/Tone.Time('8m') * 100000000) / 100000000
   }
 
   clear() {

@@ -13,7 +13,7 @@ import AudioKeys from 'audiokeys'
 /*APP OPTIONS*/
 const options = {
   strategy: 'generate',
-  tempo: 120,
+  qpm: 120,
   input: 'keyboard',
   output: 'webaudio',
   useSynth: true,
@@ -30,11 +30,6 @@ const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
 
 
 
-
-const setTempo = (qpm) =>{
-  if (Tone.Transport.state === 'started')
-    Tone.Transport.bpm.value = qpm
-}
 
 
 
@@ -63,14 +58,22 @@ const seedMarker = document.getElementById('seed')
 const generatingMarker = document.getElementById('generating')
 
 
+
+const setTempo = (qpm) =>{
+  if (Tone.Transport.state === 'started'){
+    Tone.Transport.bpm.value = qpm
+  }
+}
+
+
 /*GUI STUFF*/
 GUI.DEFAULT_WIDTH = 320
 GUI.TEXT_CLOSED = 'Colapse'
 GUI.TEXT_OPEN = 'Expand'
 const gui = new GUI({hideable:false, closeOnTop:true})
 //gui.remember(options)
-gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue']).name('Strategy')
-gui.add(options, 'tempo', 60, 180).name('Tempo').onChange(setTempo)
+gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue','continue_groove']).name('Strategy')
+gui.add(options, 'qpm', 60, 180).name('Tempo').onChange(setTempo)
 gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
 gui.add(options, 'playClick').name('Play Click')
 let input = gui.add(options, 'input',[])
@@ -161,8 +164,8 @@ const getWidth = (normalized) => Math.floor(960*normalized)
 
 // a single function where to update visuals
 const	updateVisuals = (transport) =>{
-  pianoRoll.draw(recorder.notes)
-  pianoRoll2.draw(generatedNotes)
+  pianoRoll.draw(recorder.notes,transport.loopEnd)
+  pianoRoll2.draw(generatedNotes,transport.loopEnd)
   // gives a loop progress visual feedback
   progressMarker.style = `left:${getWidth(transport.progress)}px`
   // call this fuction again on next frame
@@ -176,7 +179,7 @@ const measures = 8
 const chunks = 4
 let next_chunk = 0
 //setup transport
-Tone.Transport.bpm.value = options.tempo
+Tone.Transport.bpm.value = options.qpm
 Tone.Transport.loop = true
 Tone.Transport.loopEnd = Tone.Time(measures, 'm')
 
@@ -184,24 +187,34 @@ Tone.Transport.scheduleRepeat( (time) => {
   next_chunk++
   next_chunk %= chunks
 
+  const isContinue =  (options.strategy==='continue') || (options.strategy==='continue_groove')
+
   // which chunk depends on strategy
-  const chunk = (next_chunk- ((options.strategy==='continue')? 1: 2)+chunks) % chunks
+  const chunk = (next_chunk- (isContinue? 1: 2)+chunks) % chunks
 
   // get time interval to filter recorder notes as seed
   const t1 = chunk*Tone.Time(measures/chunks,'m')
   const t2 = (chunk+1)*Tone.Time(measures/chunks,'m')
 
   // source ns depends on strategy
-  const source = (options.strategy==='continue') ? generatedNotes : recorder.notes
+  const source = isContinue ? generatedNotes : recorder.notes
 
   //todo: trim endTime instead of strip
+  //todo: quantize, so you do not miss first beat
   const notes = source.filter(
     n => n.endTime
          && (n.startTime < n.endTime)
          && (n.startTime >= t1 && n.startTime < t2 ))
 
   // send notes to worker
-  worker.postMessage({strategy: options.strategy, notes, timeOffset: t1, destination: next_chunk})
+  worker.postMessage({
+      qpm: options.qpm,
+      temperature: options.temperature,
+      strategy: options.strategy,
+      notes,
+      timeOffset: t1,
+      destination: next_chunk
+    })
 
   //instead of scheduling visuals inside of here
 	//schedule a deferred callback with Tone.Draw
