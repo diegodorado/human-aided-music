@@ -7,10 +7,32 @@
     <meta name="description" content="A Human-machine duet"/>
     <link rel="shortcut icon" href="favicon.ico" />
     <title>Musica Asistida por Humano</title>
+    <style>
+      html, body, #app{
+        background: #010305;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+            height: 100%;
+      }
+      #start{
+        font-size: 4em;
+        cursor: pointer;
+        display: none;
+      }
+      body.loading #app, body.loading .dg{
+        display: none;
+      }
+      body.loading #start{
+        display: block;
+      }
+    </style>
   </head>
-  <body>
+  <body class="loading">
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div class="App">
+    <button id="start" disabled>LOADING...</button>
+    <div id="app">
       <section>
         <div class="visualizer-container">
           <canvas id="pianoRoll"></canvas>

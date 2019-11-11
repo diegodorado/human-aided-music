@@ -12,7 +12,8 @@
     "@magenta/music": "^1.11.0",
     "audiokeys": "^0.1.1",
     "dat.gui": "^0.7.6",
-    "lodash": "^4.17.15"
+    "lodash": "^4.17.15",
+    "startaudiocontext": "^1.2.1"
   },
   "devDependencies": {
     "@babel/core": "^7.1.0",
@@ -29,15 +30,18 @@
     "worker-loader": "^2.0.0"
   },
   "babel": {
-      "presets": [
-        ["@babel/preset-env", {
+    "presets": [
+      [
+        "@babel/preset-env",
+        {
           "targets": {
             "chrome": "58"
           }
-        }]
-      ],
-      "plugins": [
-          "@babel/plugin-proposal-class-properties"
+        }
       ]
+    ],
+    "plugins": [
+      "@babel/plugin-proposal-class-properties"
+    ]
   }
 }

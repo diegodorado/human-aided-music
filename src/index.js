@@ -9,6 +9,7 @@ import DrumKit from "./DrumKit2"
 import MonoBass from "./MonoBass"
 import {GUI} from 'dat.gui'
 import AudioKeys from 'audiokeys'
+import StartAudioContext from 'startaudiocontext'
 
 /*APP OPTIONS*/
 const options = {
@@ -53,7 +54,14 @@ const pianoRoll2 = new PianoRoll(document.getElementById('pianoRoll2'))
 const progressMarker = document.getElementById('progress')
 const seedMarker = document.getElementById('seed')
 const generatingMarker = document.getElementById('generating')
+const startButton = document.getElementById('start')
 
+
+startButton.innerText='START'
+startButton.disabled=false
+StartAudioContext(Tone.context, '#start').then(() =>{
+	document.body.className = ''
+})
 
 
 const setTempo = (qpm) =>{
