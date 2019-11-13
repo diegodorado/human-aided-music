@@ -6,11 +6,12 @@ const onNotes = new Set()
 
 
 const synth1 = new Tone.MonoSynth({
-	"oscillator" : {
-		"type" : "square"
+	oscillator : {
+		type : "square"
  },
- "envelope" : {
- 	"attack" : 0.001
+ envelope : {
+ 	attack : 0.001,
+	sustain: 0.06
  }
 })
 
@@ -26,22 +27,22 @@ const synth2 = new Tone.FMSynth(
     envelope : {
       attack : 0.001,
       decay : 0.12,
-      sustain: 0.4,
+      sustain: 0.1,
       release: 0.84
     } ,
     modulation : {
       type : 'square'
     } ,
     modulationEnvelope : {
-      attack : 0.5 ,
+      attack : 0.15 ,
       decay : 0 ,
-      sustain : 0.5 ,
+      sustain : 0.25 ,
       release : 0.5
     }
   })
 
-const filter = new Tone.Filter(3000, "lowpass")
-const dist = new Tone.Distortion(0.125)
+const filter = new Tone.Filter(2000, "lowpass")
+const dist = new Tone.Distortion(0.95)
 
 const channel = new Tone.Channel()
 synth1.connect(channel)
@@ -51,7 +52,6 @@ channel.connect(dist)
 dist.connect(filter)
 
 filter.toMaster()
-// dist.toMaster()
 
 const getLastValue = (set) =>{
   var value;
@@ -75,9 +75,6 @@ class MonoBass {
 		if(!this.active)
 			return
 
-    if(onNotes.has(note.pitch)){
-      console.log('note on twice!')
-    }
     const triggerAttack = (onNotes.size ===0)
     this.setNote(note.pitch, triggerAttack)
     onNotes.add(note.pitch)
@@ -86,7 +83,6 @@ class MonoBass {
   noteOff = (note) =>{
 		if(!this.active)
 			return
-
 
     onNotes.delete(note.pitch)
 

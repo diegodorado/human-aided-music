@@ -77,7 +77,7 @@ GUI.TEXT_CLOSED = 'Colapse'
 GUI.TEXT_OPEN = 'Expand'
 const gui = new GUI({hideable:false, closeOnTop:true})
 //gui.remember(options)
-gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue','continue_groove']).name('Strategy')
+gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue','continue_groove','tap_or_continue']).name('Strategy')
 gui.add(options, 'qpm', 60, 180).name('Tempo').onChange(setTempo)
 gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
 gui.add(options, 'playClick').name('Play Click')
@@ -87,8 +87,6 @@ gui.add(options, 'temperature', 0.0, 2.0)
 
 /*midi devices changed handler*/
 const onDevicesChanged = (m) =>{
-  console.log('onDevicesChanged')
-
   const inputs = { 'All': 'all',  'Computer Keyboard': 'keyboard'}
   m.midiInputs.forEach(i => inputs[i.name] = i.id)
   // unfortunatelly, dat.gui has no means of
@@ -103,6 +101,8 @@ const onDevicesChanged = (m) =>{
 
 
 
+let lastMidiClockAt = 0
+let midiClockCounter = 0
 
 
 //Tone.context.latencyHint = 'interactive'
@@ -125,10 +125,33 @@ midiIO.initialize({autoconnectInputs:true}).then(() => {
     if (options.input === data.device.id || options.input === 'all')
       monoBass.noteOff(data)
   })
+
+  midiIO.onClock((ev) => {
+    //if (options.input === data.device.id || options.input === 'all'){
+      if (midiClockCounter % 6 === 0) {
+        const diff = ev.timeStamp - lastMidiClockAt
+        const bpm = Math.round(60/diff/4*1000)
+        if(Tone.Transport.bpm.value !== bpm)
+          setTempo(bpm)
+        lastMidiClockAt = ev.timeStamp
+      }
+      midiClockCounter++;
+    //}
+  })
+
+  midiIO.onStart((ev) => {
+    Tone.Transport.start()
+  })
+
+  midiIO.onStop((ev) => {
+    Tone.Transport.stop()
+  })
+
   midiIO.onDevicesChanged(onDevicesChanged)
 
   Tone.Transport.start()
 })
+
 
 const playDrum = (note,time) =>{
   if(options.output==='none'){
@@ -168,11 +191,16 @@ const getWidth = (normalized) => Math.floor(960*normalized)
 
 
 // a single function where to update visuals
+//todo: make proper visuals
+let visual_degrade = 0
 const	updateVisuals = (transport) =>{
-  pianoRoll.draw(recorder.notes,transport.loopEnd)
-  pianoRoll2.draw(generatedNotes,transport.loopEnd)
-  // gives a loop progress visual feedback
-  progressMarker.style = `left:${getWidth(transport.progress)}px`
+  if(visual_degrade++ % 4 === 0){
+    pianoRoll.draw(recorder.notes)
+    pianoRoll2.draw(generatedNotes)
+    // gives a loop progress visual feedback
+    progressMarker.style = `left:${getWidth(transport.progress)}px`
+  }
+
   // call this fuction again on next frame
   requestAnimationFrame(()=>updateVisuals(transport))
 }
@@ -192,21 +220,17 @@ Tone.Transport.scheduleRepeat( (time) => {
   next_chunk++
   next_chunk %= chunks
 
-  const isContinue =  (options.strategy==='continue') || (options.strategy==='continue_groove')
-
-  // which chunk depends on strategy
-  const chunk = (next_chunk- (isContinue? 1: 2)+chunks) % chunks
+  // which chunk
+  const chunk = (next_chunk-2+chunks) % chunks
 
   // get time interval to filter recorder notes as seed
-  const t1 = chunk*Tone.Time(measures/chunks,'m')
-  const t2 = (chunk+1)*Tone.Time(measures/chunks,'m')
-
-  // source ns depends on strategy
-  const source = isContinue ? generatedNotes : recorder.notes
+  const loopEnd = Tone.Transport.loopEnd
+  const t1 = chunk*(loopEnd/chunks)
+  const t2 = (chunk+1)*(loopEnd/chunks)
 
   //todo: trim endTime instead of strip
   //todo: quantize, so you do not miss first beat
-  const notes = source.filter(
+  const notes = recorder.notes.filter(
     n => n.endTime
          && (n.startTime < n.endTime)
          && (n.startTime >= t1 && n.startTime < t2 ))
@@ -236,12 +260,16 @@ Tone.Transport.scheduleRepeat( (time) => {
 
 //limit recorder notes history
 Tone.Transport.scheduleRepeat( (time) => {
+  const loopEnd = Tone.Transport.loopEnd
+
   // 7 measures is the total history length allowed
-  const t1 = Tone.Transport.seconds
-  const t2 = (t1 < Tone.Time('7m')) ? t1 + Tone.Time('1m') : t1 - Tone.Time('7m')
+  const p1 = Tone.Transport.seconds/loopEnd
+  const p2 = (p1 < Tone.Time('7m')/loopEnd)
+    ? p1 + Tone.Time('1m')/loopEnd
+    : p1 - Tone.Time('7m')/loopEnd
   recorder.notes = recorder.notes.filter(
-      n => (t1<t2) ? (n.startTime < t1 || n.startTime > t2 )
-                   : (n.startTime < t1 && n.startTime > t2 ))
+      n => (p1<p2) ? (n.position < p1 || n.position > p2 )
+                   : (n.position < p1 && n.position > p2 ))
 }, '2n')
 
 
@@ -259,21 +287,27 @@ const onWorkerResponse = (ev) => {
   const {ns, destination} = ev.data
   if(ns){
     // get time interval to replace generatedNotes
-    const t1 = destination*Tone.Time(measures/chunks,'m')
-    const t2 = (destination+1)*Tone.Time(measures/chunks,'m')
+    const loopEnd = Tone.Transport.loopEnd
+    const t1 = destination*(loopEnd/chunks)
+    const t2 = (destination+1)*(loopEnd/chunks)
 
     // filter out old chunk
     generatedNotes = generatedNotes.filter(n => (n.startTime < t1 || n.startTime > t2 ))
 
     //shift notes to destination chunk and add them
-    ns.notes.filter(n => n.startTime < (t2-t1)).forEach(n=>{
+    // todo: quantize?
+    ns.notes.filter(n => n.startTime>0 && n.startTime < (t2-t1)).forEach(n=>{
       n.startTime += t1
       n.endTime += t1
+
+      // position and duration is for normalized rendering purposes
+      n.position = n.startTime/loopEnd
+      n.duration = (n.endTime-n.startTime)/loopEnd
+
       generatedNotes.push(n)
 
       Tone.Transport.scheduleOnce((time) =>{
       	playDrum(n,time)
-        pianoRoll2.drawNote(n, true)
       }, n.startTime)
 
     })

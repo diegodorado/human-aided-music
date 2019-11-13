@@ -6,6 +6,12 @@ const reactor = new Reactor()
 const NOTE_ON = 9
 const NOTE_OFF = 8
 
+const CLOCK = 0xF8
+const START =  0xFA
+const CONTINUE = 0xFB
+const STOP = 0xFC
+
+
 class MidiIO {
   autoconnectInputs = false
 
@@ -15,6 +21,10 @@ class MidiIO {
     reactor.registerEvent('note_on')
     reactor.registerEvent('note_off')
     reactor.registerEvent('devices_changed')
+    reactor.registerEvent('start')
+    reactor.registerEvent('continue')
+    reactor.registerEvent('stop')
+    reactor.registerEvent('clock')
   }
 
   async initialize({autoconnectInputs = false}) {
@@ -80,29 +90,54 @@ class MidiIO {
 
 
   midiMessageReceived = (event) => {
+    if( (event.data[0] & 0xF0) === 0xF0){
+
+      switch (event.data[0]) {
+        case START:
+          reactor.dispatchEvent('start', event)
+          break;
+        case CONTINUE:
+          reactor.dispatchEvent('continue', event)
+          break;
+        case STOP:
+          reactor.dispatchEvent('stop', event)
+          break;
+        case CLOCK:
+          reactor.dispatchEvent('clock', event)
+          break;
+        default:
+
+      }
+
+    }else{
     // event.timeStamp doesn't seem to work reliably across all
     // apps and controllers (sometimes it isn't set, sometimes it doesn't
     // change between notes). Use the performance now timing, unless it exists.
     let timeStampOffset;
-    if (event.timeStamp !== undefined && event.timeStamp !== 0) {
-      timeStampOffset = event.timeStamp;
-    } else {
-      timeStampOffset = performance.now();
+      if (event.timeStamp !== undefined && event.timeStamp !== 0) {
+        timeStampOffset = event.timeStamp;
+      } else {
+        timeStampOffset = performance.now();
+      }
+      const timeStamp = timeStampOffset + performance.timing.navigationStart;
+
+
+      const cmd = event.data[0] >> 4;
+      const pitch = event.data[1];
+      const velocity = (event.data.length > 2) ? event.data[2] : 1;
+      const device = event.srcElement;
+
+      // Some MIDI controllers don't send a separate NOTE_OFF command.
+      if (cmd === NOTE_OFF || (cmd === NOTE_ON && velocity === 0)) {
+        reactor.dispatchEvent('note_off',{pitch, velocity, timeStamp, device})
+      } else if (cmd === NOTE_ON) {
+        reactor.dispatchEvent('note_on',{pitch, velocity, timeStamp, device})
+      }
     }
-    const timeStamp = timeStampOffset + performance.timing.navigationStart;
 
 
-    const cmd = event.data[0] >> 4;
-    const pitch = event.data[1];
-    const velocity = (event.data.length > 2) ? event.data[2] : 1;
-    const device = event.srcElement;
 
-    // Some MIDI controllers don't send a separate NOTE_OFF command.
-    if (cmd === NOTE_OFF || (cmd === NOTE_ON && velocity === 0)) {
-      reactor.dispatchEvent('note_off',{pitch, velocity, timeStamp, device})
-    } else if (cmd === NOTE_ON) {
-      reactor.dispatchEvent('note_on',{pitch, velocity, timeStamp, device})
-    }
+
   }
 
   onNoteOn = (callback) =>{
@@ -116,6 +151,20 @@ class MidiIO {
   onDevicesChanged = (callback) =>{
     reactor.addEventListener('devices_changed', callback)
   }
+
+  onStart = (callback) =>{
+    reactor.addEventListener('start', callback)
+  }
+  onContinue = (callback) =>{
+    reactor.addEventListener('continue', callback)
+  }
+  onStop = (callback) =>{
+    reactor.addEventListener('stop', callback)
+  }
+  onClock = (callback) =>{
+    reactor.addEventListener('clock', callback)
+  }
+
 
   sendNote = (device, note, time,duration) =>{
     //device.send([0x90, note.pitch,note.velocity],time)
@@ -131,12 +180,6 @@ class MidiIO {
     for (let i of this.midiOutputs)
       if (i.id === id) return i
   }
-
-
-
-
-
-
 
 
 

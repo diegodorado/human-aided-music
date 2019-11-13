@@ -16,6 +16,7 @@ const drumVae = new MusicVAE(DRUM2BAR_CKPT)
 const grooVae = new MusicVAE(GROOVE2BAR_CKPT)
 const continueRNN = new MusicRNN(DRUM_RNN_CKPT)
 const stepsPerQuarter = 4
+let prev_ns = null
 
 let initialized = false
 
@@ -35,48 +36,56 @@ self.addEventListener('message', (ev)=>{
 
 
   try {
-    const {qpm,temperature,strategy, notes, timeOffset, destination} = ev.data
-    // Shift the sequence back to time 0
-    notes.forEach(n => {
-       n.startTime -= timeOffset
-       n.endTime -= timeOffset
+    const {destination} = ev.data
+    process(ev.data).then( (ns) => {
+      prev_ns = ns
+      postMessage({ns, destination})
     })
-
-    const ns = NoteSequence.create({notes})
-
-    switch (strategy) {
-      case 'generate':
-        generateDrum(ns,temperature, stepsPerQuarter, qpm)
-          .then((ns) => postMessage({ns, destination}))
-        break;
-      case 'generate_groove':
-        generateDrumWithGroove(ns,temperature, stepsPerQuarter, qpm)
-          .then((ns) => postMessage({ns, destination}))
-        break;
-      case 'groove':
-        groove(ns,temperature, stepsPerQuarter, qpm)
-          .then((ns) => postMessage({ns, destination}))
-        break;
-      case 'tap2drum':
-        tap2Drum(ns,temperature, stepsPerQuarter, qpm)
-          .then((ns) => postMessage({ns, destination}))
-        break;
-      case 'continue':
-        continueBeat(ns,temperature, stepsPerQuarter, qpm)
-          .then((ns) => postMessage({ns, destination}))
-        break;
-      case 'continue_groove':
-        continueGroove(ns,temperature, stepsPerQuarter, qpm)
-          .then((ns) => postMessage({ns, destination}))
-        break;
-      default:
-        break;
-    }
 
   } catch (err) {
     console.error(err);
   }
 })
+
+
+
+async function process(data) {
+
+  const {qpm,temperature,strategy, notes, timeOffset, destination} = data
+  // Shift the sequence back to time 0
+  notes.forEach(n => {
+     n.startTime -= timeOffset
+     n.endTime -= timeOffset
+  })
+
+  const ns = NoteSequence.create({notes, tempos:[{qpm}]})
+
+  switch (strategy) {
+    case 'generate':
+      return await generateDrum(ns,temperature, stepsPerQuarter, qpm)
+    case 'generate_groove':
+      return await generateDrumWithGroove(ns,temperature, stepsPerQuarter, qpm)
+    case 'groove':
+      return await groove(ns,temperature, stepsPerQuarter, qpm)
+    case 'tap2drum':
+      return await tap2Drum(ns,temperature, stepsPerQuarter, qpm)
+    case 'continue':
+      return await continueBeat(prev_ns,temperature, stepsPerQuarter, qpm)
+    case 'continue_groove':
+      return await continueGroove(prev_ns,temperature, stepsPerQuarter, qpm)
+    case 'tap_or_continue':
+      if(notes.length===0){
+        return await continueBeat(prev_ns,temperature, stepsPerQuarter, qpm)
+      }
+      else{
+        return await tap2Drum(ns,temperature, stepsPerQuarter, qpm)
+      }
+    default:
+      break;
+  }
+}
+
+
 
 async function tap2Drum(ns,temperature, stepsPerQuarter, qpm) {
   const ts = tapVae.dataConverter.toTensor(ns)
@@ -90,7 +99,7 @@ async function tap2Drum(ns,temperature, stepsPerQuarter, qpm) {
 
 async function generateDrum(ns,temperature, stepsPerQuarter, qpm) {
   const sample = await drumVae.sample(1, temperature, null, stepsPerQuarter, qpm)
-  return sequences.unquantizeSequence(sample[0])
+  return sequences.unquantizeSequence(sample[0],qpm)
 }
 
 
@@ -113,7 +122,7 @@ async function continueBeat(ns,temperature, stepsPerQuarter, qpm) {
   ns.totalTime = 8
   const qns = sequences.quantizeNoteSequence(ns,stepsPerQuarter)
   const result = await continueRNN.continueSequence(qns, 32, temperature)
-  return sequences.unquantizeSequence(result)
+  return sequences.unquantizeSequence(result,qpm)
 }
 
 
