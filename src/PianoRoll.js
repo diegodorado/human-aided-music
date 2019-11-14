@@ -6,21 +6,17 @@ const MAX_PITCH = 72
 class PianoRoll {
   noteHeight= 6
   noteSpacing= 2
-  pixelsWide= 960
   noteRGB= '8, 41, 64'
   activeNoteRGB= '240, 84, 119'
-  height = 228
-  constructor(canvas){
+  constructor(canvas, width){
     this.ctx = canvas.getContext('2d')
-    this.ctx.canvas.width = this.pixelsWide
-    this.ctx.canvas.height = this.height
   }
 
 
   draw(notes) {
     this.minPitch = Math.min(...(notes.map(n=>n.pitch))) - 2
     this.maxPitch = Math.max(...(notes.map(n=>n.pitch))) + 2
-    this.noteHeight = this.height /(this.maxPitch - this.minPitch)
+    this.noteHeight = this.ctx.canvas.height /(this.maxPitch - this.minPitch)
 
     this.clear()
     for (let i = 0; i < notes.length; i++) {
@@ -54,12 +50,12 @@ class PianoRoll {
         : (Tone.Transport.seconds<note.startTime ? Tone.Transport.loopEnd : (Tone.Transport.seconds-n.startTime))/Tone.Transport.loopEnd
 
     // Size of this note.
-    const x = note.position * this.pixelsWide
-    const w = dur(note) * this.pixelsWide
+    const x = note.position * this.ctx.canvas.width
+    const w = dur(note) * this.ctx.canvas.width
 
     // The canvas' y=0 is at the top, but a smaller pitch is actually
     // lower, so we're kind of painting backwards.
-    const y = this.height - ((note.pitch - this.minPitch) * this.noteHeight)
+    const y = this.ctx.canvas.height - ((note.pitch - this.minPitch) * this.noteHeight)
     return { x, y, w, h: this.noteHeight }
   }
 

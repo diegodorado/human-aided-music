@@ -1,8 +1,12 @@
 import {NoteSequence} from "@magenta/music/node/protobuf"
 import Tone from 'tone'
 
-class Recorder {
+const totalSize = (16*8)
 
+
+class Recorder {
+  minPitch = 32
+  maxPitch = 72
   constructor(){
     this.notes = []
     this.onNotes = new Map()
@@ -15,6 +19,7 @@ class Recorder {
     note.velocity = data.velocity
 
     note.position = note.startTime/Tone.Transport.loopEnd
+    note.quantizedStartStep = Math.round(note.position*totalSize)
     note.loopEnd = Tone.Transport.loopEnd
     this.notes.push(note)
     // Save this note so that we can finish it when we receive the note up

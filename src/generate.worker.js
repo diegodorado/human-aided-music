@@ -38,8 +38,9 @@ self.addEventListener('message', (ev)=>{
   try {
     const {destination} = ev.data
     process(ev.data).then( (ns) => {
+      const qns = sequences.quantizeNoteSequence(ns,stepsPerQuarter)
+      postMessage({ns,qns, destination})
       prev_ns = ns
-      postMessage({ns, destination})
     })
 
   } catch (err) {
@@ -75,7 +76,7 @@ async function process(data) {
       return await continueGroove(prev_ns,temperature, stepsPerQuarter, qpm)
     case 'tap_or_continue':
       if(notes.length===0){
-        return await continueBeat(prev_ns,temperature, stepsPerQuarter, qpm)
+        return await continueGroove(prev_ns,temperature, stepsPerQuarter, qpm)
       }
       else{
         return await tap2Drum(ns,temperature, stepsPerQuarter, qpm)
@@ -89,6 +90,7 @@ async function process(data) {
 
 async function tap2Drum(ns,temperature, stepsPerQuarter, qpm) {
   const ts = tapVae.dataConverter.toTensor(ns)
+  // collapse into a hi hat
   const input = await tapVae.dataConverter.toNoteSequence(ts)
   const z = await tapVae.encode([input])
   const decoded = await tapVae.decode(z,temperature, null, stepsPerQuarter, qpm)

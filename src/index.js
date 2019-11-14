@@ -4,12 +4,12 @@ import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
 import Recorder from "./Recorder"
-import PianoRoll from "./PianoRoll"
 import DrumKit from "./DrumKit2"
 import MonoBass from "./MonoBass"
 import {GUI} from 'dat.gui'
 import AudioKeys from 'audiokeys'
 import StartAudioContext from 'startaudiocontext'
+import {reverseMidiMapping} from "./midiMapping"
 
 /*APP OPTIONS*/
 const options = {
@@ -22,14 +22,13 @@ const options = {
   temperature: 1.0
 }
 
+let generatedNotes = []
 
 const worker = new gWorker()
 const recorder = new Recorder()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
 const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
-
-
 
 keyboard.down( (note) => {
   if (options.input === 'keyboard'){
@@ -47,14 +46,85 @@ keyboard.up( (note) => {
   }
 })
 
-
 //get dom elements references
-const pianoRoll = new PianoRoll(document.getElementById('pianoRoll'))
-const pianoRoll2 = new PianoRoll(document.getElementById('pianoRoll2'))
-const progressMarker = document.getElementById('progress')
-const seedMarker = document.getElementById('seed')
-const generatingMarker = document.getElementById('generating')
 const startButton = document.getElementById('start')
+const orcaVis = document.getElementById('orca')
+
+
+const orcaRows = []
+
+for ( let i = 0; i< 30; i++){
+  const items = []
+  const p = document.createElement('p')
+  for ( let j = 0; j< 16*8; j++){
+    const item = document.createElement('i')
+    item.innerText = i===15 ? '-' : ''
+    p.appendChild(item)
+    items.push(item)
+  }
+  orcaVis.appendChild(p)
+  orcaRows.push(items)
+}
+
+const recorderRange = 12
+const updateOrcaVis = (tick) =>{
+  const offsetY = 0
+  orcaVis.className = `tick-${tick}`
+
+  // clean up
+  for ( let i = offsetY; i< offsetY+recorderRange; i++){
+    orcaRows[i][tick].style=''
+    orcaRows[i][tick].innerText=''
+  }
+
+  recorder.notes.filter(n => n.quantizedStartStep===tick )
+    .forEach( n => {
+      let i = (n.pitch-recorder.minPitch)/(recorder.maxPitch - recorder.minPitch)
+      if(i<0) i = 0
+      if(i>1) i = 1
+      const idx = recorderRange-Math.round(i*recorderRange)
+      const item = orcaRows[offsetY+idx][tick]
+      const opacity = 0.5+n.velocity/127/2
+      item.innerText = '+'
+      item.style=`opacity:${opacity};`
+    })
+
+}
+
+
+const updateOrcaRows = (qns, destination) =>{
+  const offsetY = 20
+  const destSize = (16*8/chunks)
+  const offsetX = destination*destSize
+
+  // clean up
+  for ( let i = offsetY; i< offsetY+9; i++){
+    for ( let j = offsetX; j< offsetX+destSize; j++){
+      orcaRows[i][j].style=''
+      orcaRows[i][j].innerText=''
+    }
+  }
+
+  qns.notes.forEach( n => {
+    const idx = 8 - reverseMidiMapping.get(n.pitch)
+    const item = orcaRows[offsetY+idx][offsetX+n.quantizedStartStep]
+    const opacity = n.velocity ? (0.5+n.velocity/127/2) : 1
+    item.innerText = '*'
+    item.style=`opacity:${opacity};`
+  })
+
+}
+
+
+
+let tick = 0
+Tone.Transport.scheduleRepeat( (time) => {
+	Tone.Draw.schedule(() =>{
+		updateOrcaVis(tick)
+    tick++
+    tick %= (16*8)
+	}, time)
+}, Tone.Time('16n'))
 
 
 startButton.innerText='START'
@@ -184,28 +254,6 @@ const playClick = (step) =>{
 
 
 
-let generatedNotes = []
-
-//todo: get rid of this hardcoded 960px wide
-const getWidth = (normalized) => Math.floor(960*normalized)
-
-
-// a single function where to update visuals
-//todo: make proper visuals
-let visual_degrade = 0
-const	updateVisuals = (transport) =>{
-  if(visual_degrade++ % 4 === 0){
-    pianoRoll.draw(recorder.notes)
-    pianoRoll2.draw(generatedNotes)
-    // gives a loop progress visual feedback
-    progressMarker.style = `left:${getWidth(transport.progress)}px`
-  }
-
-  // call this fuction again on next frame
-  requestAnimationFrame(()=>updateVisuals(transport))
-}
-updateVisuals(Tone.Transport)
-
 
 //repeated event every one measure
 const measures = 8
@@ -235,6 +283,26 @@ Tone.Transport.scheduleRepeat( (time) => {
          && (n.startTime < n.endTime)
          && (n.startTime >= t1 && n.startTime < t2 ))
 
+
+  // filter out old chunk
+  const tt1 = next_chunk*(loopEnd/chunks)
+  const tt2 = (next_chunk+1)*(loopEnd/chunks)
+  generatedNotes = generatedNotes.filter(n => (n.startTime < tt1 || n.startTime > tt2 ))
+
+  //updates recorder boundaries
+  const pitches = recorder.notes.map ( n => n.pitch)
+  const outsiders = pitches.filter(i=> i<recorder.minPitch || i>recorder.maxPitch)
+  if(outsiders.length>0 || (recorder.maxPitch-recorder.minPitch)>recorderRange){
+    if(pitches.length>0){
+      recorder.minPitch = Math.min(...pitches)
+      recorder.maxPitch = Math.max(...pitches)
+    }
+  }
+
+
+
+
+
   // send notes to worker
   worker.postMessage({
       qpm: options.qpm,
@@ -248,12 +316,25 @@ Tone.Transport.scheduleRepeat( (time) => {
   //instead of scheduling visuals inside of here
 	//schedule a deferred callback with Tone.Draw
 	Tone.Draw.schedule(() =>{
-		//this callback is invoked from a requestAnimationFrame
-		//and will be invoked close to AudioContext time
-    const w = `width:${getWidth(1/chunks)}px`
-    generatingMarker.style = `${w};left:${getWidth(next_chunk/chunks)}px`
-    seedMarker.style = `${w};left:${getWidth((chunk/chunks))}px`
+    for ( let j = 0; j< 16*8; j++){
+      const ch = Math.floor(j/(16*8)*chunks)
+      const seed = ch===chunk
+      const gen = ch===next_chunk
+      orcaRows[13][j].innerText = ''
+      orcaRows[14][j].innerText = seed ? '↧' : ''
+      orcaRows[17][j].innerText = ''
+      orcaRows[18][j].innerText = gen ? '↯' : ''
+    }
+
+    'SEED'.split('')
+      .forEach((c,i) => orcaRows[13][chunk*16*8/chunks+i].innerText = c )
+    'GENERATED'.split('')
+      .forEach((c,i) => orcaRows[17][next_chunk*16*8/chunks+i].innerText = c )
+
+
 	}, time) //use AudioContext time of the event
+
+
 
 }, Tone.Time(measures/chunks, 'm'))
 
@@ -284,19 +365,19 @@ Tone.Transport.scheduleRepeat( (time) => {
 
 
 const onWorkerResponse = (ev) => {
-  const {ns, destination} = ev.data
+  const {ns, qns,destination} = ev.data
   if(ns){
     // get time interval to replace generatedNotes
     const loopEnd = Tone.Transport.loopEnd
     const t1 = destination*(loopEnd/chunks)
     const t2 = (destination+1)*(loopEnd/chunks)
 
-    // filter out old chunk
-    generatedNotes = generatedNotes.filter(n => (n.startTime < t1 || n.startTime > t2 ))
+    updateOrcaRows(qns, destination)
 
     //shift notes to destination chunk and add them
     // todo: quantize?
-    ns.notes.filter(n => n.startTime>0 && n.startTime < (t2-t1)).forEach(n=>{
+    //ns.notes.filter(n => n.startTime>0 && n.startTime < (t2-t1)).forEach(n=>{
+    ns.notes.forEach(n=>{
       n.startTime += t1
       n.endTime += t1
 

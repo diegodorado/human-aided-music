@@ -1,56 +1,60 @@
+$blue: #509eec
+$width: (90/(16*8))* 1vw
+$height: $width *1.5
+
 html, body, #app
   background: #010305
   display: flex
   flex-direction: column
   align-items: center
   justify-content: center
+  margin: 0
+  padding: 0
 
-section
-  padding: 10px
-  margin-bottom: 40px
+#orca
+  margin: 20px 0
+  @for $i from 1 through (16*8)
+    &.tick-#{($i - 1)}
+      i:nth-child(#{$i})
+        background-color: $blue
 
-.visualizer-container
-  background: grey
-  padding: 14px
-  overflow-x: auto
-  width: 80vw
-  canvas
-    background: white
+
+  p
+    text-align: center
     margin: 0
-
-.transport
-  height: 10px
-  background: #ddd
-  width: 960px
-  margin: 10px 0
-  position: relative
-
-#generating
-  height: 5px
-  bottom: 0
-  background: #a8d
-  position: absolute
-
-#seed
-  height: 5px
-  top: 0
-  background: #fa8
-  position: absolute
-
-#progress
-  height: 10px
-  background: #666
-  width: 10px
-  margin-left: -5px
-  position: absolute
+    i:empty
+      background: none !important
+      &:after
+        content: '.'
+        opacity: 0.35
+    i
+      color: white
+      font-size: $height
+      line-height: $height
+      height: $height
+      width: $width
+      text-align: center
+      display: inline-block
+      font-style: normal
+      font-family: Inconsolata,monospace
 
 // dat GUI overrides
-
-.dg
-  &.main .close-button
-    line-height: 24px
-    height: 24px
-
-  .cr
-    &.string, &.boolean, &.color, &.function, &.number
-      border-left: 0 !important
+body
+  .dg
+    font-family: Inconsolata,monospace
+    font-size: 16px
+    &.main .close-button
+      line-height: 24px
+      height: 24px
+    .cr
+      &.string, &.boolean, &.color, &.function, &.number
+        border-left: 0
+        input,select
+          color: $blue
+          background: none
+          border: none
+    select
+      font-family: Inconsolata,monospace
+      font-size: 16px
+    .c .slider-fg
+      background: $blue
