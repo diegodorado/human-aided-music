@@ -294,8 +294,8 @@ Tone.Transport.scheduleRepeat( (time) => {
   const outsiders = pitches.filter(i=> i<recorder.minPitch || i>recorder.maxPitch)
   if(outsiders.length>0 || (recorder.maxPitch-recorder.minPitch)>recorderRange){
     if(pitches.length>0){
-      recorder.minPitch = Math.min(...pitches)
-      recorder.maxPitch = Math.max(...pitches)
+      recorder.minPitch = Math.min(...pitches) - 1
+      recorder.maxPitch = Math.max(...pitches) + 1
     }
   }
 
