@@ -4,12 +4,14 @@ import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
 import Recorder from "./Recorder"
-import DrumKit from "./DrumKit2"
+import DrumKit from "./DrumKit"
 import MonoBass from "./MonoBass"
-import {GUI} from 'dat.gui'
+import {setupGUI,onMidiDevicesChanged} from './GUI'
 import AudioKeys from 'audiokeys'
 import StartAudioContext from 'startaudiocontext'
-import {reverseMidiMapping} from "./midiMapping"
+import { setupOrca,updateOrcaVis, updateOrcaDrums,updateOrcaMarkers} from './Orca'
+import { setClickVolume, changeClickActive} from './Click'
+import {setupKeyboard} from './Keyboard'
 
 /*APP OPTIONS*/
 const options = {
@@ -19,6 +21,9 @@ const options = {
   output: 'webaudio',
   useSynth: true,
   playClick: false,
+  clickVolume: -12,
+  drumsVolume: 0,
+  synthVolume: -24,
   temperature: 1.0
 }
 
@@ -28,111 +33,15 @@ const worker = new gWorker()
 const recorder = new Recorder()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
-const keyboard = new AudioKeys({polyphony: 1,rows: 1, rootNote: 48})
-
-keyboard.down( (note) => {
-  if (options.input === 'keyboard'){
-    const data = { pitch: note.note, velocity:100}
-    recorder.noteOn(data)
-    monoBass.noteOn(data)
-  }
-})
-
-keyboard.up( (note) => {
-  if (options.input === 'keyboard'){
-    const data = { pitch: note.note, velocity:0}
-    recorder.noteOff(data)
-    monoBass.noteOff(data)
-  }
-})
+monoBass.setVolume(options.synthVolume)
 
 //get dom elements references
+const guiEl = document.getElementById('gui')
 const startButton = document.getElementById('start')
 const orcaVis = document.getElementById('orca')
 
-
-const orcaRows = []
-
-for ( let i = 0; i< 30; i++){
-  const items = []
-  const p = document.createElement('p')
-  for ( let j = 0; j< 16*8; j++){
-    const item = document.createElement('i')
-    item.innerText = i===15 ? '-' : ''
-    p.appendChild(item)
-    items.push(item)
-  }
-  orcaVis.appendChild(p)
-  orcaRows.push(items)
-}
-
-const recorderRange = 12
-const updateOrcaVis = (tick) =>{
-  const offsetY = 0
-  orcaVis.className = `tick-${tick}`
-
-  // clean up
-  for ( let i = offsetY; i< offsetY+recorderRange; i++){
-    orcaRows[i][tick].style=''
-    orcaRows[i][tick].innerText=''
-  }
-
-  recorder.notes.filter(n => n.quantizedStartStep===tick )
-    .forEach( n => {
-      let i = (n.pitch-recorder.minPitch)/(recorder.maxPitch - recorder.minPitch)
-      if(i<0) i = 0
-      if(i>1) i = 1
-      const idx = recorderRange-Math.round(i*recorderRange)
-      const item = orcaRows[offsetY+idx][tick]
-      const opacity = 0.5+n.velocity/127/2
-      item.innerText = '+'
-      item.style=`opacity:${opacity};`
-    })
-
-}
-
-
-const updateOrcaRows = (qns, destination) =>{
-  const offsetY = 20
-  const destSize = (16*8/chunks)
-  const offsetX = destination*destSize
-
-  // clean up
-  for ( let i = offsetY; i< offsetY+9; i++){
-    for ( let j = offsetX; j< offsetX+destSize; j++){
-      orcaRows[i][j].style=''
-      orcaRows[i][j].innerText=''
-    }
-  }
-
-  qns.notes.forEach( n => {
-    const idx = 8 - reverseMidiMapping.get(n.pitch)
-    const item = orcaRows[offsetY+idx][offsetX+n.quantizedStartStep]
-    const opacity = n.velocity ? (0.5+n.velocity/127/2) : 1
-    item.innerText = '*'
-    item.style=`opacity:${opacity};`
-  })
-
-}
-
-
-
-let tick = 0
-Tone.Transport.scheduleRepeat( (time) => {
-	Tone.Draw.schedule(() =>{
-		updateOrcaVis(tick)
-    tick++
-    tick %= (16*8)
-	}, time)
-}, Tone.Time('16n'))
-
-
-startButton.innerText='START'
-startButton.disabled=false
-StartAudioContext(Tone.context, '#start').then(() =>{
-	document.body.className = ''
-})
-
+setupOrca(orcaVis)
+setupKeyboard(options,recorder,monoBass)
 
 const setTempo = (qpm) =>{
   if (Tone.Transport.state === 'started'){
@@ -140,84 +49,70 @@ const setTempo = (qpm) =>{
   }
 }
 
+setupGUI(guiEl, options, monoBass,DrumKit, changeClickActive, setClickVolume, setTempo)
 
-/*GUI STUFF*/
-GUI.DEFAULT_WIDTH = 320
-GUI.TEXT_CLOSED = 'Colapse'
-GUI.TEXT_OPEN = 'Expand'
-const gui = new GUI({hideable:false, closeOnTop:true})
-//gui.remember(options)
-gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue','continue_groove','tap_or_continue']).name('Strategy')
-gui.add(options, 'qpm', 60, 180).name('Tempo').onChange(setTempo)
-gui.add(options, 'useSynth').name('Use Synth').onChange(monoBass.setActive)
-gui.add(options, 'playClick').name('Play Click')
-let input = gui.add(options, 'input',[])
-let output = gui.add(options, 'output',[])
-gui.add(options, 'temperature', 0.0, 2.0)
 
-/*midi devices changed handler*/
-const onDevicesChanged = (m) =>{
-  const inputs = { 'All': 'all',  'Computer Keyboard': 'keyboard'}
-  m.midiInputs.forEach(i => inputs[i.name] = i.id)
-  // unfortunatelly, dat.gui has no means of
-  // updating controller options without recreating it
-  // so, onchange handler has to be bound here
-  input = input.options(inputs)
+Tone.Transport.scheduleRepeat( (time) => {
+	Tone.Draw.schedule(() =>{
+		updateOrcaVis(recorder)
+	}, time)
+}, Tone.Time('16n'))
 
-  const outputs = { 'No Output': 'none','WebAudio Drum': 'webaudio'}
-  m.midiOutputs.forEach(i => outputs[i.name] = i.id)
-  output = output.options(outputs)
-}
+
+startButton.textContent='START'
+startButton.disabled=false
+StartAudioContext(Tone.context, '#start').then(() =>{
+	document.body.className = ''
+})
+
+
+
 
 
 
 let lastMidiClockAt = 0
 let midiClockCounter = 0
 
-
 //Tone.context.latencyHint = 'interactive'
 Tone.context.latencyHint = 'fastest'
 //initialize midi
 midiIO.initialize({autoconnectInputs:true}).then(() => {
   midiIO.onNoteOn((data) => {
-    if (options.input === data.device.id || options.input === 'all')
+    if (options.input === data.device.id || options.input === 'all'){
       recorder.noteOn(data)
-  })
-  midiIO.onNoteOff((data) => {
-    if (options.input === data.device.id || options.input === 'all')
-      recorder.noteOff(data)
-  })
-  midiIO.onNoteOn((data) => {
-    if (options.input === data.device.id || options.input === 'all')
       monoBass.noteOn(data)
+    }
   })
   midiIO.onNoteOff((data) => {
-    if (options.input === data.device.id || options.input === 'all')
+    if (options.input === data.device.id || options.input === 'all'){
+      recorder.noteOff(data)
       monoBass.noteOff(data)
+    }
   })
 
   midiIO.onClock((ev) => {
-    //if (options.input === data.device.id || options.input === 'all'){
-      if (midiClockCounter % 6 === 0) {
-        const diff = ev.timeStamp - lastMidiClockAt
-        const bpm = Math.round(60/diff/4*1000)
-        if(Tone.Transport.bpm.value !== bpm)
-          setTempo(bpm)
-        lastMidiClockAt = ev.timeStamp
-      }
-      midiClockCounter++;
-    //}
+    return //disabled for now
+    if (midiClockCounter % 6 === 0) {
+      const diff = ev.timeStamp - lastMidiClockAt
+      const bpm = Math.round(60/diff/4*1000)
+      if(Tone.Transport.bpm.value !== bpm)
+        setTempo(bpm)
+      lastMidiClockAt = ev.timeStamp
+    }
+    midiClockCounter++;
   })
 
   midiIO.onStart((ev) => {
+    return //disabled for now
     Tone.Transport.start()
   })
 
   midiIO.onStop((ev) => {
+    return //disabled for now
     Tone.Transport.stop()
   })
 
-  midiIO.onDevicesChanged(onDevicesChanged)
+  midiIO.onDevicesChanged(onMidiDevicesChanged)
 
   Tone.Transport.start()
 })
@@ -241,18 +136,6 @@ const playDrum = (note,time) =>{
   }
 
 }
-
-const click = new Tone.MembraneSynth(
-      {pitchDecay: 0.008,envelope: {attack: 0.001, decay: 0.3, sustain: 0}}
-    ).toMaster()
-
-const playClick = (step) =>{
-  if(options.playClick){
-    click.triggerAttack((step===0) ? 'C6' : 'G5')
-  }
-}
-
-
 
 
 //repeated event every one measure
@@ -289,19 +172,6 @@ Tone.Transport.scheduleRepeat( (time) => {
   const tt2 = (next_chunk+1)*(loopEnd/chunks)
   generatedNotes = generatedNotes.filter(n => (n.startTime < tt1 || n.startTime > tt2 ))
 
-  //updates recorder boundaries
-  const pitches = recorder.notes.map ( n => n.pitch)
-  const outsiders = pitches.filter(i=> i<recorder.minPitch || i>recorder.maxPitch)
-  if(outsiders.length>0 || (recorder.maxPitch-recorder.minPitch)>recorderRange){
-    if(pitches.length>0){
-      recorder.minPitch = Math.min(...pitches) - 1
-      recorder.maxPitch = Math.max(...pitches) + 1
-    }
-  }
-
-
-
-
 
   // send notes to worker
   worker.postMessage({
@@ -313,28 +183,9 @@ Tone.Transport.scheduleRepeat( (time) => {
       destination: next_chunk
     })
 
-  //instead of scheduling visuals inside of here
-	//schedule a deferred callback with Tone.Draw
 	Tone.Draw.schedule(() =>{
-    for ( let j = 0; j< 16*8; j++){
-      const ch = Math.floor(j/(16*8)*chunks)
-      const seed = ch===chunk
-      const gen = ch===next_chunk
-      orcaRows[13][j].innerText = ''
-      orcaRows[14][j].innerText = seed ? '↧' : ''
-      orcaRows[17][j].innerText = ''
-      orcaRows[18][j].innerText = gen ? '↯' : ''
-    }
-
-    'SEED'.split('')
-      .forEach((c,i) => orcaRows[13][chunk*16*8/chunks+i].innerText = c )
-    'GENERATED'.split('')
-      .forEach((c,i) => orcaRows[17][next_chunk*16*8/chunks+i].innerText = c )
-
-
+    updateOrcaMarkers(recorder, chunks, chunk, next_chunk)
 	}, time) //use AudioContext time of the event
-
-
 
 }, Tone.Time(measures/chunks, 'm'))
 
@@ -354,14 +205,6 @@ Tone.Transport.scheduleRepeat( (time) => {
 }, '2n')
 
 
-let beatStep = 0
-Tone.Transport.scheduleRepeat( (time) => {
-  playClick(beatStep)
-  beatStep++
-  beatStep%=4
-}, '4n')
-
-
 
 
 const onWorkerResponse = (ev) => {
@@ -372,7 +215,7 @@ const onWorkerResponse = (ev) => {
     const t1 = destination*(loopEnd/chunks)
     const t2 = (destination+1)*(loopEnd/chunks)
 
-    updateOrcaRows(qns, destination)
+    updateOrcaDrums(qns, destination, chunks)
 
     //shift notes to destination chunk and add them
     // todo: quantize?

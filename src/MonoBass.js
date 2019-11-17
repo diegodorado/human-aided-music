@@ -62,6 +62,12 @@ const getLastValue = (set) =>{
 
 class MonoBass {
 	active = true
+
+	setVolume = (vol) => {
+    synth1.volume.value = vol
+    synth2.volume.value = vol
+	}
+
 	setActive = (active) =>{
 		this.active = active
 		//release any active note

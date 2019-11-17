@@ -6,22 +6,22 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="A Human-machine duet"/>
     <link rel="shortcut icon" href="favicon.ico" />
-    <title>mapH</title>
+    <title>mapH (música asistida por Humano)</title>
     <style>
-      html, body, #app{
+      html, body,#app{
         background: #010305;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-            height: 100%;
+        height: 100%;
       }
       #start{
         font-size: 4em;
         cursor: pointer;
         display: none;
       }
-      body.loading #app, body.loading .dg{
+      body.loading #orca, body.loading #gui{
         display: none;
       }
       body.loading #start{
@@ -32,9 +32,14 @@
   </head>
   <body class="loading">
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <button id="start" disabled>LOADING...</button>
     <div id="app">
+      <h1>
+        mapH
+        <span>(música asistida por Humano)</span>
+      </h1>
+      <button id="start" disabled>LOADING...</button>
       <div id="orca"></div>
+      <div id="gui"></div>
     </div>
     <script src="app.js"></script>
   </body>
