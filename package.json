@@ -13,7 +13,8 @@
     "audiokeys": "^0.1.1",
     "dat.gui": "^0.7.6",
     "lodash": "^4.17.15",
-    "startaudiocontext": "^1.2.1"
+    "startaudiocontext": "^1.2.1",
+    "stats.js": "^0.17.0"
   },
   "devDependencies": {
     "@babel/core": "^7.1.0",

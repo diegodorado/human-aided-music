@@ -1,17 +1,15 @@
 import {reverseMidiMapping} from "./midiMapping"
 
 // state
-let tick = 0
+
 let recorder = null
+let options = null
 let ctx = null
 const rows = []
 
 const measures = 8
 const stepsPerMeasure = 16
 const steps = stepsPerMeasure*measures
-//fixme: be aware of these two, length is critical
-const orcaSeed      = '↧↧↧↧↧↧↧↧↧↧↧↧↧ SEED ↧↧↧↧↧↧↧↧↧↧↧↧↧'.split('')
-const orcaGenerated = '↯↯↯↯↯↯↯↯↯↯ GENERATED ↯↯↯↯↯↯↯↯↯↯↯'.split('')
 const recorderRange = 18
 const transportRange = 5 // space, seed, cursor, generated, space
 const drumsRange = 9
@@ -28,8 +26,6 @@ const randomMusicalSymbol = () => musicalSymbols[Math.floor(Math.random()*musica
 
 
 const voightKampffTestQuestions = 'You are in a desert         walking along in the sand             when all of the sudden you look down               and you see a tortoise           crawling toward you            You reach down             you flip the tortoise over on its back                 The tortoise lays on its back                its belly baking in the hot sun                beating its legs trying to turn itself over                but it can not           not without your help                  But you are not helping            Why is that ? '.split('').map(c => c===' '? randomMusicalSymbol() : c)
-
-
 let randomCharIdx = -1
 const randomChar = () => {
   randomCharIdx++
@@ -48,8 +44,8 @@ const rainChar = () => {
 
 
 
-export const setupOrca =  (canvas, _recorder) => {
-  // console.time('setupOrca')
+export const setupOrca =  (canvas, _recorder, opts) => {
+  options = opts
   recorder = _recorder
   const dpr = window.devicePixelRatio || 1
   ctx = canvas.getContext('2d')
@@ -62,8 +58,7 @@ export const setupOrca =  (canvas, _recorder) => {
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
-  // Scale all drawing operations by the dpr, so you
-  // don't have to worry about the difference.
+  // Scale all drawing operations by the dpr
   ctx.scale(dpr, dpr)
 
   //fill cache
@@ -71,7 +66,7 @@ export const setupOrca =  (canvas, _recorder) => {
     const items = []
     for ( let j = 0; j< totalRange; j++){
       const p = (j===(recorderRange+2))
-      items.push({alpha:p?1:0.5,char:p?'-':'·', empty:!p})
+      items.push({alpha:p?1:0.3,char:p?'-':'·', empty:!p})
     }
     rows.push(items)
   }
@@ -83,7 +78,6 @@ export const setupOrca =  (canvas, _recorder) => {
     }
   }
 
-  // console.timeEnd('setupOrca')
 }
 
 const drawCell = (i,j, highlight=false) =>{
@@ -96,9 +90,7 @@ const drawCell = (i,j, highlight=false) =>{
   ctx.fillText(rows[i][j].char, cellWidth*(i+0.5), cellHeight*(j+0.5) )
 }
 
-
 export const updateOrcaNote = (note) =>{
-  // console.time('updateOrcaNote')
   const i = note.quantizedStartStep
   let j = (note.pitch-recorder.minPitch)/(recorder.maxPitch - recorder.minPitch)
   j = recorderRange - Math.round(recorderRange*j)
@@ -107,30 +99,47 @@ export const updateOrcaNote = (note) =>{
 
   rows[i][j].alpha = 0.5+note.velocity/127/2
   rows[i][j].char = randomChar()
+  rows[i][j].empty = false
 
-  //clear cell
-  ctx.clearRect( cellWidth*i,cellHeight*j,cellWidth,cellHeight)
+  // redraw cell
   drawCell(i,j, true)
-  // console.timeEnd('updateOrcaNote')
 }
 
 
-
-export const updateOrcaVis = () =>{
-  // console.time('updateOrcaVis')
+export const updateOrcaVis = (tick) =>{
   const prev_tick = (tick-1+steps)%steps
+  const prev2_tick = (tick-3+steps)%steps
 
   ctx.clearRect( cellWidth*tick,0,cellWidth,canvasHeight)
-  ctx.clearRect( cellWidth*prev_tick,0,cellWidth,canvasHeight)
+  //ctx.clearRect( cellWidth*prev_tick,0,cellWidth,canvasHeight)
 
   for ( let i = 0; i< totalRange; i++){
     //reset previous
-    drawCell(prev_tick,i)
+    //drawCell(prev_tick,i)
     drawCell(tick,i,!rows[tick][i].empty)
+
+    //check if a note should be off
+    if(i < recorderRange && !rows[prev2_tick][i].empty){
+      if(!rows[prev2_tick][i].empty){
+        ctx.clearRect( cellWidth*prev2_tick,cellHeight*i,cellWidth,cellHeight)
+        drawCell(prev2_tick,i, false)
+      }
+    }
+    else{
+      ctx.clearRect( cellWidth*prev_tick,cellHeight*i,cellWidth,cellHeight)
+      drawCell(prev_tick,i, false)
+    }
+
   }
-  tick++
-  tick %= steps
-  // console.timeEnd('updateOrcaVis')
+
+  ctx.strokeStyle = "#333"
+  ctx.lineWidth = 1
+  for ( let i = 1; i< options.subdivisions; i++){
+    ctx.beginPath()
+    ctx.moveTo((canvasWidth/options.subdivisions)*i, 0)
+    ctx.lineTo((canvasWidth/options.subdivisions)*i, canvasHeight)
+    ctx.stroke()
+  }
 }
 
 
@@ -144,7 +153,7 @@ export const updateOrcaDrums = (qns, destination, chunks) =>{
   for ( let i = offsetX; i< offsetX+destSize; i++){
     for ( let j = 0; j< totalRange; j++){
       if(j <= recorderRange || j >= recorderRange + transportRange){
-        rows[i][j].alpha = 0.5
+        rows[i][j].alpha = 0.3
         rows[i][j].char = '·'
         rows[i][j].empty = true
       }
@@ -159,6 +168,7 @@ export const updateOrcaDrums = (qns, destination, chunks) =>{
       return {idx,opacity,step: n.quantizedStartStep}
     })
     .sort( (a, b) => {
+      // this sort is for text reading
       const al = Math.floor(a.idx/3)
       const bl = Math.floor(b.idx/3)
       if(al < bl)
@@ -190,25 +200,25 @@ export const updateOrcaDrums = (qns, destination, chunks) =>{
 
 
 export const updateOrcaMarkers = (chunks, chunk, next_chunk) =>{
-  // console.time('updateOrcaMarkers')
+
+  const destSize = (steps/chunks)
+  const seed = (i) => i >= (steps/chunks)*chunk && i < (steps/chunks)*(chunk+1)
+  const gen = (i) => i >= (steps/chunks)*next_chunk && i < (steps/chunks)*(next_chunk+1)
 
   for ( let i = 0; i< steps; i++){
-    rows[i][recorderRange+1].char = '·'
-    rows[i][recorderRange+3].char = '·'
+    rows[i][recorderRange+1].char = seed(i) ? '↧' : '·'
+    rows[i][recorderRange+3].char = gen(i) ? '↯' : '·'
   }
-  orcaSeed.forEach((c,i) => rows[i+chunk*(steps/chunks)][recorderRange+1].char = c )
-  orcaGenerated.forEach((c,i) => rows[i+next_chunk*(steps/chunks)][recorderRange+3].char = c )
 
   // clear canvas region
   ctx.clearRect( 0,(recorderRange+1)*cellHeight,canvasWidth,cellHeight)
   ctx.clearRect( 0,(recorderRange+3)*cellHeight,canvasWidth,cellHeight)
 
-  // draw notes
+  // draw symbols
   for ( let i = 0; i< steps; i++){
     drawCell(i,recorderRange+1)
     drawCell(i,recorderRange+3)
   }
-  // console.timeEnd('updateOrcaMarkers')
 
   //todo: move elsewhere
   // updates recorder boundaries

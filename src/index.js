@@ -11,6 +11,11 @@ import StartAudioContext from 'startaudiocontext'
 import { setupOrca,updateOrcaVis, updateOrcaDrums,updateOrcaMarkers, updateOrcaNote} from './Orca'
 import { setClickVolume, changeClickActive} from './Click'
 import {setupKeyboard} from './Keyboard'
+import {setupStats,beginMs, endMs } from './Stats'
+
+
+const stats = document.getElementById('stats')
+setupStats(stats)
 
 /*APP OPTIONS*/
 const options = {
@@ -23,7 +28,12 @@ const options = {
   clickVolume: -12,
   drumsVolume: 0,
   synthVolume: -24,
-  temperature: 1.0
+  temperature: 1.0,
+  subdivisions: 8,
+  measures: 8,
+  steps: 8*16,
+  interpolateFor: 0,
+  repeatFor: 0
 }
 
 let generatedNotes = []
@@ -38,7 +48,7 @@ const guiEl = document.getElementById('gui')
 const startButton = document.getElementById('start')
 const orca = document.getElementById('orca')
 
-setupOrca(orca, recorder)
+setupOrca(orca, recorder, options)
 
 // handlers from both midi and keyboard
 const noteOn = (note) =>{
@@ -60,21 +70,70 @@ const setTempo = (qpm) =>{
   }
 }
 
+
 setupGUI(guiEl, options, monoBass,DrumKit, changeClickActive, setClickVolume, setTempo)
 
 
-Tone.Transport.scheduleRepeat( (time) => {
-	Tone.Draw.schedule(updateOrcaVis, time)
-}, '16n')
 
-/*
-const seq = new Tone.Sequence((time, step)=>{
-  //Tone.Draw.schedule(updateOrcaVis, time)
-  //console.log(time,step, Tone.Transport.position)
-  //console.log( Tone.Transport.position)
-  Tone.Draw.schedule(updateOrcaVis, time)
-}, [...Array(16*8).keys()], '16n').start()
-*/
+const getTimeInterval = (chunk) => {
+  const frag = Tone.Transport.loopEnd/options.subdivisions
+  return [chunk*frag, (chunk+1)*frag]
+}
+
+
+const updateDrums = (time) => {
+  // which chunk
+  const next_chunk = (tick/options.steps*options.subdivisions + 1) % options.subdivisions
+  const prev_chunk = (next_chunk-2+options.subdivisions) % options.subdivisions
+
+  // get time interval to filter recorder notes as seed
+  const [t1,t2] = getTimeInterval(prev_chunk)
+
+  //todo: trim endTime instead of strip
+  //todo: quantize, so you do not miss first beat
+  const notes = recorder.notes.filter(
+    n => n.endTime
+         && (n.startTime < n.endTime)
+         && (n.startTime >= t1 && n.startTime < t2 ))
+
+  // filter out old chunk
+  const [tt1,tt2] = getTimeInterval(next_chunk)
+  generatedNotes = generatedNotes.filter(n => (n.startTime < tt1 || n.startTime > tt2 ))
+  recorder.notes = recorder.notes.filter(n => (n.startTime < tt1 || n.startTime > tt2 ))
+
+  // send notes to worker
+  worker.postMessage({
+      qpm: options.qpm,
+      temperature: options.temperature,
+      strategy: options.strategy,
+      repeatFor: options.repeatFor,
+      interpolateFor: options.interpolateFor,
+      notes,
+      timeOffset: t1,
+      destination: next_chunk
+    })
+
+  beginMs() // begin measure worker time
+
+	Tone.Draw.schedule(() =>{
+    updateOrcaMarkers(options.subdivisions, prev_chunk, next_chunk)
+	}, time) //use AudioContext time of the event
+
+
+}
+
+
+
+let tick = 0
+//a single schedule!
+Tone.Transport.scheduleRepeat( (time) => {
+	Tone.Draw.schedule(() =>updateOrcaVis(tick), time)
+  if((tick%(options.steps/options.subdivisions))===0){
+    updateDrums(time)
+  }
+  tick++
+  tick %= options.steps
+}, '16n')
 
 
 
@@ -83,9 +142,6 @@ startButton.disabled=false
 StartAudioContext(Tone.context, '#start').then(() =>{
 	document.body.className = ''
 })
-
-
-
 
 
 
@@ -157,90 +213,29 @@ const playDrum = (note,time) =>{
 }
 
 
-//repeated event every one measure
-const measures = 8
-const chunks = 4
-let next_chunk = 0
 //setup transport
 Tone.Transport.bpm.value = options.qpm
 Tone.Transport.loop = true
-Tone.Transport.loopEnd = Tone.Time(measures, 'm')
+Tone.Transport.loopEnd = Tone.Time(options.measures, 'm')
 
-
-Tone.Transport.scheduleRepeat( (time) => {
-  next_chunk++
-  next_chunk %= chunks
-
-  // which chunk
-  const chunk = (next_chunk-2+chunks) % chunks
-
-  // get time interval to filter recorder notes as seed
-  const loopEnd = Tone.Transport.loopEnd
-  const t1 = chunk*(loopEnd/chunks)
-  const t2 = (chunk+1)*(loopEnd/chunks)
-
-  //todo: trim endTime instead of strip
-  //todo: quantize, so you do not miss first beat
-  const notes = recorder.notes.filter(
-    n => n.endTime
-         && (n.startTime < n.endTime)
-         && (n.startTime >= t1 && n.startTime < t2 ))
-
-
-  // filter out old chunk
-  const tt1 = next_chunk*(loopEnd/chunks)
-  const tt2 = (next_chunk+1)*(loopEnd/chunks)
-  generatedNotes = generatedNotes.filter(n => (n.startTime < tt1 || n.startTime > tt2 ))
-
-
-  // send notes to worker
-  worker.postMessage({
-      qpm: options.qpm,
-      temperature: options.temperature,
-      strategy: options.strategy,
-      notes,
-      timeOffset: t1,
-      destination: next_chunk
-    })
-
-	Tone.Draw.schedule(() =>{
-    updateOrcaMarkers(chunks, chunk, next_chunk)
-	}, time) //use AudioContext time of the event
-
-}, Tone.Time(measures/chunks, 'm'))
-
-
-//limit recorder notes history
-Tone.Transport.scheduleRepeat( (time) => {
-  const loopEnd = Tone.Transport.loopEnd
-
-  // 7 measures is the total history length allowed
-  const p1 = Tone.Transport.seconds/loopEnd
-  const p2 = (p1 < Tone.Time('7m')/loopEnd)
-    ? p1 + Tone.Time('1m')/loopEnd
-    : p1 - Tone.Time('7m')/loopEnd
-  recorder.notes = recorder.notes.filter(
-      n => (p1<p2) ? (n.position < p1 || n.position > p2 )
-                   : (n.position < p1 && n.position > p2 ))
-}, '1m')
 
 
 
 const onWorkerResponse = (ev) => {
   const {ns, qns,destination} = ev.data
   if(ns){
-    // get time interval to replace generatedNotes
-    const loopEnd = Tone.Transport.loopEnd
-    const t1 = destination*(loopEnd/chunks)
-    const t2 = (destination+1)*(loopEnd/chunks)
+    endMs() // end measure worker time
 
-    updateOrcaDrums(qns, destination, chunks)
-
+    const [t1,t2] = getTimeInterval(destination)
+    // worker may return a longer sequence, so filter out
+    qns.notes = qns.notes.filter(n => n.quantizedStartStep < (options.steps/options.subdivisions))
+    updateOrcaDrums(qns, destination, options.subdivisions)
 
     //shift notes to destination chunk and add them
     // todo: quantize?
-    //ns.notes.filter(n => n.startTime>0 && n.startTime < (t2-t1)).forEach(n=>{
-    ns.notes.forEach(n=>{
+    // worker may return a longer sequence, so filter out
+    ns.notes.filter(n => n.startTime>=0 && n.startTime < (t2-t1))
+      .forEach(n=>{
       n.startTime += t1
       n.endTime += t1
       generatedNotes.push(n)

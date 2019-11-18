@@ -55,9 +55,10 @@ h1
           display: none
     &,input,select
       font-family: Inconsolata,monospace
-      font-size: 15px
-      line-height: 15px
+      font-size: 13px
+      line-height: 13px
     select
+      min-width: 100px
       cursor: pointer
       -webkit-appearance: none
       -moz-appearance: none
@@ -74,3 +75,12 @@ h1
           border: none
     .c .slider-fg
       background: $blue
+
+#stats
+  position: fixed
+  top: 0
+  right: 0
+  margin-right: 5vw
+  margin-top: 3vh
+  canvas
+    margin-left: 10px

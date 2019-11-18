@@ -18,6 +18,8 @@ export const setupGUI = (guiEl, options, monoBass,DrumKit, changeClickActive, se
   //save and recall settings from localstorage
   gui.useLocalStorage = true
   gui.remember(options)
+  //fucking no typed shit
+  options.subdivisions = parseInt(options.subdivisions)
 
   guiEl.appendChild(gui.domElement)
 
@@ -26,11 +28,18 @@ export const setupGUI = (guiEl, options, monoBass,DrumKit, changeClickActive, se
   gui.add(options, 'playClick').name('Play Click').onChange(changeClickActive).onFinishChange(blurMe)
   gui.add(options, 'clickVolume', -60, 0).name('Click Volume').onChange(setClickVolume)
   gui.add(options, 'drumsVolume', -60, 0).name('Drums Volume').onChange(DrumKit.setVolume)
-  gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue','continue_groove','tap_or_continue']).name('Strategy').onFinishChange(blurMe)
+  gui.add(options, 'strategy', ['generate','tap2drum','generate_groove','groove','continue','continue_groove','tap_or_continue','interpolate']).name('Strategy').onFinishChange(blurMe)
   gui.add(options, 'temperature', 0.0, 2.0).name('Temperature')
-  gui.add(options, 'qpm', 60, 180).name('Tempo').onChange(setTempo)
+  gui.add(options, 'qpm', 60, 180).name('Tempo').step(1).onChange(setTempo)
   input = gui.add(options, 'input',[])
   output = gui.add(options, 'output',[])
+  gui.add(options, 'subdivisions', [4,8,16]).name('Subdivisions').onChange((v)=>{
+    //fucking no typed shit
+    options.subdivisions = parseInt(v)
+  }).onFinishChange(blurMe)
+  gui.add(options, 'interpolateFor', 0, 8).step(1)
+  gui.add(options, 'repeatFor', 0, 8).step(1)
+
 
 
   //set remembered values
@@ -40,7 +49,7 @@ export const setupGUI = (guiEl, options, monoBass,DrumKit, changeClickActive, se
   setClickVolume(options.clickVolume)
   DrumKit.setVolume(options.drumsVolume)
   setTempo(options.qpm)
-  
+
 }
 
 /*midi devices changed handler*/

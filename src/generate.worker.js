@@ -17,9 +17,10 @@ const grooVae = new MusicVAE(GROOVE2BAR_CKPT)
 const continueRNN = new MusicRNN(DRUM_RNN_CKPT)
 const stepsPerQuarter = 4
 let prev_ns = null
-
+let repeatingFor = 0
 let initialized = false
-
+let interp = null
+let interpolatingFor = 0
 // initialize all models
 Promise.all([
     drumVae.initialize(),
@@ -36,12 +37,29 @@ self.addEventListener('message', (ev)=>{
 
 
   try {
-    const {destination} = ev.data
-    process(ev.data).then( (ns) => {
-      const qns = sequences.quantizeNoteSequence(ns,stepsPerQuarter)
-      postMessage({ns,qns, destination})
-      prev_ns = ns
-    })
+    const {destination, repeatFor,interpolateFor,strategy} = ev.data
+
+
+    if(strategy==='interpolate' && interp && interpolateFor>0 && interpolatingFor++<interpolateFor){
+      const qns = sequences.quantizeNoteSequence(interp[interpolatingFor-1],stepsPerQuarter)
+      postMessage({ns: interp[interpolatingFor-1],qns, destination})
+      console.log(`interpolate step ${interpolatingFor} of ${interpolateFor}`)
+    }
+    else if(strategy!=='interpolate' && prev_ns && repeatFor>0 && repeatingFor++<repeatFor){
+      const qns = sequences.quantizeNoteSequence(prev_ns,stepsPerQuarter)
+      postMessage({ns: prev_ns,qns, destination})
+    }
+    else{
+      repeatingFor = 0
+      interpolatingFor = 0
+      process(ev.data).then( (ns) => {
+        const qns = sequences.quantizeNoteSequence(ns,stepsPerQuarter)
+        postMessage({ns,qns, destination})
+        prev_ns = ns
+      })
+    }
+
+
 
   } catch (err) {
     console.error(err);
@@ -52,7 +70,7 @@ self.addEventListener('message', (ev)=>{
 
 async function process(data) {
 
-  const {qpm,temperature,strategy, notes, timeOffset, destination} = data
+  const {qpm,temperature,strategy, notes, timeOffset, destination,interpolateFor} = data
   // Shift the sequence back to time 0
   notes.forEach(n => {
      n.startTime -= timeOffset
@@ -75,12 +93,10 @@ async function process(data) {
     case 'continue_groove':
       return await continueGroove(prev_ns,temperature, stepsPerQuarter, qpm)
     case 'tap_or_continue':
-      if(notes.length===0){
-        return await continueGroove(prev_ns,temperature, stepsPerQuarter, qpm)
-      }
-      else{
-        return await tap2Drum(ns,temperature, stepsPerQuarter, qpm)
-      }
+      tap_or_continue(ns,temperature, stepsPerQuarter, qpm)
+    case 'interpolate':
+      return await interpolate(ns,temperature, stepsPerQuarter, qpm, interpolateFor)
+
     default:
       break;
   }
@@ -95,6 +111,27 @@ async function tap2Drum(ns,temperature, stepsPerQuarter, qpm) {
   const z = await tapVae.encode([input])
   const decoded = await tapVae.decode(z,temperature, null, stepsPerQuarter, qpm)
   return decoded[0]
+}
+
+
+
+async function tap_or_continue(ns,temperature, stepsPerQuarter, qpm) {
+
+  if(!prev_ns)
+    return await groove(ns,temperature, stepsPerQuarter, qpm)
+  else{
+    if(ns.notes.length===0)
+      return await continueGroove(prev_ns,temperature, stepsPerQuarter, qpm)
+    else{
+      // get tap2drum
+      const tap = await tap2Drum(ns,temperature, stepsPerQuarter, qpm)
+      // get interpolation from prev_ns and tapped
+      const int = await grooVae.interpolate([prev_ns,tap], 3)
+      //return middle point
+      return int[1]
+    }
+  }
+
 }
 
 
@@ -136,4 +173,26 @@ async function continueGroove(ns,temperature, stepsPerQuarter, qpm) {
   const z = await grooVae.encode([cont])
   const decoded = await grooVae.decode(z,temperature, null, stepsPerQuarter, qpm)
   return decoded[0]
+}
+
+
+
+
+async function interpolate(ns,temperature, stepsPerQuarter, qpm, interpolateFor) {
+  const samples = await grooVae.sample(2, temperature, null, stepsPerQuarter, qpm)
+  if(interp)
+    interp = await grooVae.interpolate([interp[interpolateFor-1],samples[0]], interpolateFor)
+  else
+    interp = await grooVae.interpolate(samples, interpolateFor)
+
+  // no way to set qpm through interpolate... so stretch manually
+  for ( let i= 0; i< interp.length; i++){
+    interp[i].tempos[0].qpm = qpm
+    for ( let j= 0; j< interp[i].notes.length; j++){
+      interp[i].notes[j].startTime *= (120/qpm)
+      interp[i].notes[j].endTime *= (120/qpm)
+    }
+  }
+
+  return interp[0]
 }
