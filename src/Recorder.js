@@ -1,8 +1,7 @@
-import {NoteSequence} from "@magenta/music/node/protobuf"
 import Tone from 'tone'
 
+//todo: move elsewhere, where it can be changed 
 const totalSize = (16*8)
-
 
 class Recorder {
   minPitch = 32
@@ -13,17 +12,20 @@ class Recorder {
   }
 
   noteOn = (data) =>{
-    const note = new NoteSequence.Note()
+
+    const note = {}
     note.pitch = data.pitch
     note.startTime = Tone.Transport.seconds
     note.velocity = data.velocity
 
     note.position = note.startTime/Tone.Transport.loopEnd
-    note.quantizedStartStep = Math.round(note.position*totalSize)
+    note.quantizedStartStep = Math.round(note.position*totalSize) % totalSize
     note.loopEnd = Tone.Transport.loopEnd
     this.notes.push(note)
     // Save this note so that we can finish it when we receive the note up
-    this.onNotes.set(data.pitch, note);
+    this.onNotes.set(note.pitch, note)
+
+    return note
   }
 
   noteOff = (data) =>{
@@ -35,6 +37,7 @@ class Recorder {
       const loopEnd = Tone.Transport.loopEnd
       const endTime = (note.endTime<note.startTime ? loopEnd :note.endTime)
       note.duration = (endTime-note.startTime)/loopEnd
+      return note
     }
     this.onNotes.delete(data.pitch)
   }

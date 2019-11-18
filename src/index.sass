@@ -1,6 +1,4 @@
 $blue: #509eec
-$width: (90/(16*8))* 1vw
-$height: $width *1.5
 
 html, body
   margin: 0
@@ -30,31 +28,16 @@ h1
 
 #orca
   margin: 20px 0
-  p
-    text-align: center
-    margin: 0
-  i
-    color: white
-    font-size: $height
-    line-height: $height
-    height: $height
-    width: $width
-    text-align: center
-    display: inline-block
-    font-style: normal
-    font-family: Inconsolata,monospace
-    &.current-tick
-      background-color: $blue
-    &.empty
-      opacity: 0.35
+  width: 90vw
+  // image-rendering: pixelated
 
 // dat GUI overrides
 #gui
   margin: 30px 0 60px
   border: 1px dotted #aaa
-  padding: 1vw
   .dg
-    width: 90vw !important
+    padding: 1vw
+    width: 88vw !important
     .close-button
       display: none
     ul
@@ -72,8 +55,8 @@ h1
           display: none
     &,input,select
       font-family: Inconsolata,monospace
-      font-size: $height
-      line-height: $height
+      font-size: 15px
+      line-height: 15px
     select
       cursor: pointer
       -webkit-appearance: none

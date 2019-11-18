@@ -7,9 +7,8 @@ import Recorder from "./Recorder"
 import DrumKit from "./DrumKit"
 import MonoBass from "./MonoBass"
 import {setupGUI,onMidiDevicesChanged} from './GUI'
-import AudioKeys from 'audiokeys'
 import StartAudioContext from 'startaudiocontext'
-import { setupOrca,updateOrcaVis, updateOrcaDrums,updateOrcaMarkers} from './Orca'
+import { setupOrca,updateOrcaVis, updateOrcaDrums,updateOrcaMarkers, updateOrcaNote} from './Orca'
 import { setClickVolume, changeClickActive} from './Click'
 import {setupKeyboard} from './Keyboard'
 
@@ -33,15 +32,27 @@ const worker = new gWorker()
 const recorder = new Recorder()
 const midiIO = new MidiIO()
 const monoBass = new MonoBass()
-monoBass.setVolume(options.synthVolume)
 
 //get dom elements references
 const guiEl = document.getElementById('gui')
 const startButton = document.getElementById('start')
-const orcaVis = document.getElementById('orca')
+const orca = document.getElementById('orca')
 
-setupOrca(orcaVis)
-setupKeyboard(options,recorder,monoBass)
+setupOrca(orca, recorder)
+
+// handlers from both midi and keyboard
+const noteOn = (note) =>{
+  // gets a quantized note
+  note = recorder.noteOn(note)
+  updateOrcaNote(note)
+  monoBass.noteOn(note)
+}
+const noteOff = (note) =>{
+  recorder.noteOff(note)
+  monoBass.noteOff(note)
+}
+
+setupKeyboard(options,noteOn,noteOff)
 
 const setTempo = (qpm) =>{
   if (Tone.Transport.state === 'started'){
@@ -53,10 +64,18 @@ setupGUI(guiEl, options, monoBass,DrumKit, changeClickActive, setClickVolume, se
 
 
 Tone.Transport.scheduleRepeat( (time) => {
-	Tone.Draw.schedule(() =>{
-		updateOrcaVis(recorder)
-	}, time)
-}, Tone.Time('16n'))
+	Tone.Draw.schedule(updateOrcaVis, time)
+}, '16n')
+
+/*
+const seq = new Tone.Sequence((time, step)=>{
+  //Tone.Draw.schedule(updateOrcaVis, time)
+  //console.log(time,step, Tone.Transport.position)
+  //console.log( Tone.Transport.position)
+  Tone.Draw.schedule(updateOrcaVis, time)
+}, [...Array(16*8).keys()], '16n').start()
+*/
+
 
 
 startButton.textContent='START'
@@ -75,18 +94,18 @@ let midiClockCounter = 0
 
 //Tone.context.latencyHint = 'interactive'
 Tone.context.latencyHint = 'fastest'
+
+
 //initialize midi
 midiIO.initialize({autoconnectInputs:true}).then(() => {
   midiIO.onNoteOn((data) => {
     if (options.input === data.device.id || options.input === 'all'){
-      recorder.noteOn(data)
-      monoBass.noteOn(data)
+      noteOn(data)
     }
   })
   midiIO.onNoteOff((data) => {
     if (options.input === data.device.id || options.input === 'all'){
-      recorder.noteOff(data)
-      monoBass.noteOff(data)
+      noteOff(data)
     }
   })
 
@@ -118,11 +137,13 @@ midiIO.initialize({autoconnectInputs:true}).then(() => {
 })
 
 
+
+
 const playDrum = (note,time) =>{
   if(options.output==='none'){
     return
   }else if(options.output==='webaudio'){
-    DrumKit.play(note)
+    DrumKit.play(note, time)
   }else{
     const device = midiIO.getOutputById(options.output)
     const length = (note.endTime - note.startTime) * 1000 // in ms.
@@ -132,9 +153,7 @@ const playDrum = (note,time) =>{
     device.send([0x90, note.pitch,note.velocity])
     device.send([0x80, note.pitch,0]
       ,window.performance.now() + length)
-
   }
-
 }
 
 
@@ -146,6 +165,7 @@ let next_chunk = 0
 Tone.Transport.bpm.value = options.qpm
 Tone.Transport.loop = true
 Tone.Transport.loopEnd = Tone.Time(measures, 'm')
+
 
 Tone.Transport.scheduleRepeat( (time) => {
   next_chunk++
@@ -184,7 +204,7 @@ Tone.Transport.scheduleRepeat( (time) => {
     })
 
 	Tone.Draw.schedule(() =>{
-    updateOrcaMarkers(recorder, chunks, chunk, next_chunk)
+    updateOrcaMarkers(chunks, chunk, next_chunk)
 	}, time) //use AudioContext time of the event
 
 }, Tone.Time(measures/chunks, 'm'))
@@ -202,8 +222,7 @@ Tone.Transport.scheduleRepeat( (time) => {
   recorder.notes = recorder.notes.filter(
       n => (p1<p2) ? (n.position < p1 || n.position > p2 )
                    : (n.position < p1 && n.position > p2 ))
-}, '2n')
-
+}, '1m')
 
 
 
@@ -217,26 +236,18 @@ const onWorkerResponse = (ev) => {
 
     updateOrcaDrums(qns, destination, chunks)
 
+
     //shift notes to destination chunk and add them
     // todo: quantize?
     //ns.notes.filter(n => n.startTime>0 && n.startTime < (t2-t1)).forEach(n=>{
     ns.notes.forEach(n=>{
       n.startTime += t1
       n.endTime += t1
-
-      // position and duration is for normalized rendering purposes
-      n.position = n.startTime/loopEnd
-      n.duration = (n.endTime-n.startTime)/loopEnd
-
       generatedNotes.push(n)
-
       Tone.Transport.scheduleOnce((time) =>{
       	playDrum(n,time)
       }, n.startTime)
-
     })
-
-
   }
 }
 
