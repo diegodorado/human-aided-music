@@ -3,11 +3,6 @@ import {reverseMidiMapping} from "./midiMapping"
 
 const baseUrl = 'https://s3-us-west-2.amazonaws.com/s.cdpn.io/969699'
 
-const reverb = new Tone.Convolver(`${baseUrl}/small-drum-room.wav`).toMaster()
-reverb.wet.value = 0.35
-const snarePanner = new Tone.Panner().connect(reverb)
-new Tone.LFO(0.13, -0.25, 0.25).connect(snarePanner.pan).start()
-
 const drumKit = [
   new Tone.Players({
     high: `${baseUrl}/808-kick-vh.mp3`,
@@ -18,42 +13,42 @@ const drumKit = [
     high: `${baseUrl}/flares-snare-vh.mp3`,
     med: `${baseUrl}/flares-snare-vm.mp3`,
     low: `${baseUrl}/flares-snare-vl.mp3`
-  }).connect(snarePanner),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/808-hihat-vh.mp3`,
     med: `${baseUrl}/808-hihat-vm.mp3`,
     low: `${baseUrl}/808-hihat-vl.mp3`
-  }).connect(new Tone.Panner(-0.5).connect(reverb)),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/808-hihat-open-vh.mp3`,
     med: `${baseUrl}/808-hihat-open-vm.mp3`,
     low: `${baseUrl}/808-hihat-open-vl.mp3`
-  }).connect(new Tone.Panner(-0.5).connect(reverb)),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/slamdam-tom-low-vh.mp3`,
     med: `${baseUrl}/slamdam-tom-low-vm.mp3`,
     low: `${baseUrl}/slamdam-tom-low-vl.mp3`
-  }).connect(new Tone.Panner(-0.4).connect(reverb)),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/slamdam-tom-mid-vh.mp3`,
     med: `${baseUrl}/slamdam-tom-mid-vm.mp3`,
     low: `${baseUrl}/slamdam-tom-mid-vl.mp3`
-  }).connect(reverb),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/slamdam-tom-high-vh.mp3`,
     med: `${baseUrl}/slamdam-tom-high-vm.mp3`,
     low: `${baseUrl}/slamdam-tom-high-vl.mp3`
-  }).connect(new Tone.Panner(0.4).connect(reverb)),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/909-clap-vh.mp3`,
     med: `${baseUrl}/909-clap-vm.mp3`,
     low: `${baseUrl}/909-clap-vl.mp3`
-  }).connect(new Tone.Panner(0.5).connect(reverb)),
+  }).toMaster(),
   new Tone.Players({
     high: `${baseUrl}/909-rim-vh.wav`,
     med: `${baseUrl}/909-rim-vm.wav`,
     low: `${baseUrl}/909-rim-vl.wav`
-  }).connect(new Tone.Panner(0.5).connect(reverb))
+  }).toMaster(),
 ];
 
 

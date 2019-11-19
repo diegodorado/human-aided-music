@@ -12,6 +12,7 @@ import { setupOrca,updateOrcaVis, updateOrcaDrums,updateOrcaMarkers, updateOrcaN
 import { setClickVolume, changeClickActive} from './Click'
 import {setupKeyboard} from './Keyboard'
 import {setupStats,beginMs, endMs } from './Stats'
+import {ns_strech} from "./ns_utils"
 
 
 const stats = document.getElementById('stats')
@@ -19,21 +20,21 @@ setupStats(stats)
 
 /*APP OPTIONS*/
 const options = {
-  strategy: 'generate',
   qpm: 120,
   input: 'keyboard',
   output: 'webaudio',
   useSynth: true,
   playClick: false,
   clickVolume: -12,
+  quantize: false,
   drumsVolume: 0,
   synthVolume: -24,
   temperature: 1.0,
   subdivisions: 8,
   measures: 8,
   steps: 8*16,
-  interpolateFor: 0,
-  repeatFor: 0
+  interpolation: 1,
+  reactiveness: 0.5
 }
 
 let generatedNotes = []
@@ -47,6 +48,7 @@ const monoBass = new MonoBass()
 const guiEl = document.getElementById('gui')
 const startButton = document.getElementById('start')
 const orca = document.getElementById('orca')
+const msgEl = document.getElementById('msg')
 
 setupOrca(orca, recorder, options)
 
@@ -67,6 +69,7 @@ setupKeyboard(options,noteOn,noteOff)
 const setTempo = (qpm) =>{
   if (Tone.Transport.state === 'started'){
     Tone.Transport.bpm.value = qpm
+    options.qpm = qpm
   }
 }
 
@@ -105,9 +108,8 @@ const updateDrums = (time) => {
   worker.postMessage({
       qpm: options.qpm,
       temperature: options.temperature,
-      strategy: options.strategy,
-      repeatFor: options.repeatFor,
-      interpolateFor: options.interpolateFor,
+      reactiveness: options.reactiveness,
+      interpolation: options.interpolation,
       notes,
       timeOffset: t1,
       destination: next_chunk
@@ -141,16 +143,21 @@ startButton.textContent='START'
 startButton.disabled=false
 StartAudioContext(Tone.context, '#start').then(() =>{
 	document.body.className = ''
+  //setup transport
+  Tone.Transport.bpm.value = options.qpm
+  Tone.Transport.loop = true
+  Tone.Transport.loopEnd = Tone.Time(options.measures, 'm')
+  // Tone.context.latencyHint = 'interactive'
+  // Tone.context.latencyHint = 'playback'
+  // Tone.context.latencyHint = 'fastest'
+  // console.log('Tone.context.lookAhead',Tone.context.lookAhead)
+  Tone.Transport.start()
 })
 
 
 
 let lastMidiClockAt = 0
 let midiClockCounter = 0
-
-//Tone.context.latencyHint = 'interactive'
-Tone.context.latencyHint = 'fastest'
-
 
 //initialize midi
 midiIO.initialize({autoconnectInputs:true}).then(() => {
@@ -166,15 +173,17 @@ midiIO.initialize({autoconnectInputs:true}).then(() => {
   })
 
   midiIO.onClock((ev) => {
-    return //disabled for now
-    if (midiClockCounter % 6 === 0) {
-      const diff = ev.timeStamp - lastMidiClockAt
-      const bpm = Math.round(60/diff/4*1000)
-      if(Tone.Transport.bpm.value !== bpm)
-        setTempo(bpm)
-      lastMidiClockAt = ev.timeStamp
+    if (options.input === ev.target.id || options.input === 'all'){
+      if (midiClockCounter % 6 === 0) {
+        const diff = ev.timeStamp - lastMidiClockAt
+        const bpm = Math.round(60/diff/4*1000)
+        // dont trigger tempo change by noise
+        if(Math.abs(Tone.Transport.bpm.value-bpm)>2)
+          setTempo(bpm)
+        lastMidiClockAt = ev.timeStamp
+      }
+      midiClockCounter++
     }
-    midiClockCounter++;
   })
 
   midiIO.onStart((ev) => {
@@ -189,7 +198,6 @@ midiIO.initialize({autoconnectInputs:true}).then(() => {
 
   midiIO.onDevicesChanged(onMidiDevicesChanged)
 
-  Tone.Transport.start()
 })
 
 
@@ -213,36 +221,43 @@ const playDrum = (note,time) =>{
 }
 
 
-//setup transport
-Tone.Transport.bpm.value = options.qpm
-Tone.Transport.loop = true
-Tone.Transport.loopEnd = Tone.Time(options.measures, 'm')
-
 
 
 
 const onWorkerResponse = (ev) => {
-  const {ns, qns,destination} = ev.data
+  const {ns, destination,msg} = ev.data
+  msgEl.textContent = msg
+
+
   if(ns){
     endMs() // end measure worker time
 
+    if(ns.tempos[0].qpm !== options.qpm){
+      //strech ns if tempo has changed
+      ns_strech(ns,options.qpm)
+    }
+
     const [t1,t2] = getTimeInterval(destination)
     // worker may return a longer sequence, so filter out
-    qns.notes = qns.notes.filter(n => n.quantizedStartStep < (options.steps/options.subdivisions))
-    updateOrcaDrums(qns, destination, options.subdivisions)
+    ns.notes = ns.notes.filter(n => n.quantizedStartStep < (options.steps/options.subdivisions))
+    updateOrcaDrums(ns, destination, options.subdivisions)
 
-    //shift notes to destination chunk and add them
-    // todo: quantize?
-    // worker may return a longer sequence, so filter out
-    ns.notes.filter(n => n.startTime>=0 && n.startTime < (t2-t1))
-      .forEach(n=>{
-      n.startTime += t1
-      n.endTime += t1
+    // shift notes to destination chunk and add them
+    const stepTime = Tone.Time('16n')
+    for(let i = 0;i<ns.notes.length;i++){
+      const n = ns.notes[i]
+      if(options.quantize){
+        n.startTime = t1 + n.quantizedStartStep * stepTime
+        n.endTime = t1 + n.quantizedEndStep * stepTime
+      }else{
+        n.startTime += t1
+        n.endTime += t1
+      }
       generatedNotes.push(n)
       Tone.Transport.scheduleOnce((time) =>{
       	playDrum(n,time)
       }, n.startTime)
-    })
+    }
   }
 }
 
