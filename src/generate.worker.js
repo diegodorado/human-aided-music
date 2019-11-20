@@ -3,7 +3,8 @@ import {NoteSequence} from "@magenta/music/node/protobuf"
 import {sequences} from "@magenta/music/node/core"
 import {ns_strech} from "./ns_utils"
 
-const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/'
+//const CHECKPOINTS_DIR = 'https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/'
+const CHECKPOINTS_DIR = 'http://localhost:8080/checkpoints/'
 const TAP2DRUM_CKPT = `${CHECKPOINTS_DIR}groovae_tap2drum_2bar`
 const GROOVE2BAR_CKPT = `${CHECKPOINTS_DIR}groovae_2bar_humanize`
 

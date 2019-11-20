@@ -5,14 +5,13 @@
   "description": "",
   "scripts": {
     "start": "webpack-dev-server --config ./webpack.config.js --mode development",
-    "build": "webpack",
+    "build": "rm public/*.worker.* && webpack",
     "test": "echo \"No test specified\" && exit 0"
   },
   "dependencies": {
     "@magenta/music": "^1.11.0",
     "audiokeys": "^0.1.1",
     "dat.gui": "^0.7.6",
-    "lodash": "^4.17.15",
     "startaudiocontext": "^1.2.1",
     "stats.js": "^0.17.0"
   },
@@ -20,7 +19,7 @@
     "@babel/core": "^7.1.0",
     "@babel/plugin-proposal-class-properties": "^7.7.0",
     "@babel/preset-env": "^7.1.0",
-    "babel-loader": "^8.0.2",
+    "babel-loader": "^8.0.6",
     "css-loader": "^3.2.0",
     "node-sass": "^4.13.0",
     "sass-loader": "^8.0.0",
@@ -36,7 +35,7 @@
         "@babel/preset-env",
         {
           "targets": {
-            "chrome": "58"
+            "chrome": "68"
           }
         }
       ]

@@ -4,8 +4,10 @@ import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
 import Recorder from "./Recorder"
-import DrumKit from "./DrumKit"
-import MonoBass from "./MonoBass"
+//import DrumKit from "./DrumKit"
+import DrumKit from "./MockDrumKit"
+//import MonoBass from "./MonoBass"
+import MonoBass from "./MockMonoBass"
 import {setupGUI,onMidiDevicesChanged} from './GUI'
 import StartAudioContext from 'startaudiocontext'
 import { setupOrca,updateOrcaVis, updateOrcaDrums,updateOrcaMarkers, updateOrcaNote} from './Orca'
