@@ -15,6 +15,7 @@ const stepsPerQuarter = 4
 // state
 let initialized = false
 let interp = null
+let last_tapify = null
 let interpIdx = 0
 
 // initialize all models
@@ -63,29 +64,53 @@ async function process(data) {
     // we have input, so get a note sequence out of it
     const ns = await tapify(notes, timeOffset,temperature, qpm)
 
-    if(reactiveness===1)
-      return [ns,`fully listening, ${Math.round(reactiveness*100)}% reactiveness`]
+    if(ns===null)
+      return [interp[interpIdx],`silent error... fix me please`]
+
     //arbitrary length
-    const length = 20
-    // interpolate from current pattern to tap pattern
-    const seqs = await interpolate([interp[interpIdx],ns], temperature, qpm, length)
+    const length = 10
+    // interpolate from last_tapify or current pattern to tap pattern
+    const samples = (last_tapify!==null) ? [last_tapify,ns] : [interp[interpIdx],ns]
+    const seqs = await interpolate(samples, temperature, qpm, length)
+    seqs.push(ns) //adds tapify output
     // get idx based on reactiveness
-    const seqIdx = Math.floor(reactiveness*(length-1))
+    const seqIdx = Math.floor(reactiveness*length) // n+1, since we added tapify output
+    //remember this output
+    last_tapify = seqs[seqIdx]
     //return that pattern
     return [seqs[seqIdx],`listening with ${Math.round(reactiveness*100)}% reactiveness`]
   }
   else{
-    // advance idx
-    interpIdx++
 
-    // if we are out of range, regenerate
-    if(interpIdx >= interp.length){
+    // are we coming from a tapify cycle?
+    if(last_tapify!== null){
+
       // get a random samples
       const samples = await grooVae.sample(1, temperature, null, stepsPerQuarter, qpm)
       //fill interp array
-      interp = await interpolate([interp[interp.length-1],samples[0]], temperature, qpm, interpolation)
+      interp = await interpolate([last_tapify,samples[0]], temperature, qpm, interpolation)
       //reset index
       interpIdx = 0
+
+      // if no input, then continue alone
+      last_tapify = null
+
+    }
+    // if we are out of range, regenerate
+    else{
+
+      // advance idx
+      interpIdx++
+
+      if(interpIdx >= interp.length){
+        // get a random sample
+        const samples = await grooVae.sample(1, temperature, null, stepsPerQuarter, qpm)
+        //fill interp array
+        interp = await interpolate([interp[interp.length-1],samples[0]], temperature, qpm, interpolation)
+        //reset index
+        interpIdx = 0
+      }
+
     }
 
     // just return current interpolation step
@@ -96,25 +121,30 @@ async function process(data) {
 
 
 async function tapify(notes,timeOffset,temperature, qpm) {
+  const maxLength = (32/stepsPerQuarter)*60/qpm
+  let ns,ts, input
   // Shift the sequence back to time 0
   notes.forEach(n => {
      n.startTime -= timeOffset
      n.endTime -= timeOffset
+     if(n.endTime>maxLength)
+      n.endTime = maxLength -0.01
   })
 
   try {
-    const ns = NoteSequence.create({notes, tempos:[{qpm}]})
+    ns = NoteSequence.create({notes, tempos:[{qpm}]})
     //todo: handle this error
     //Error: Model does not support sequences with more than 32 steps (4 seconds at qpm 120).
-    const ts = tapVae.dataConverter.toTensor(ns)
+    ts = tapVae.dataConverter.toTensor(ns)
     // collapse into a hi hat
-    const input = await tapVae.dataConverter.toNoteSequence(ts)
+    input = await tapVae.dataConverter.toNoteSequence(ts)
     const z = await tapVae.encode([input])
     const decoded = await tapVae.decode(z,temperature, null, stepsPerQuarter, qpm)
     return decoded[0]
   } catch (err) {
     console.error(err)
-    debugger
+    //debugger
+    return null
   }
 
 }

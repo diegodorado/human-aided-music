@@ -2,9 +2,10 @@ import Reactor from './Reactor'
 
 const reactor = new Reactor()
 
-// MIDI commands we care about. See
-const NOTE_ON = 9
-const NOTE_OFF = 8
+// MIDI commands we care about. (discarding channel)
+const NOTE_ON = 0x90
+const NOTE_OFF = 0x80
+const CC = 0xB0
 
 const CLOCK = 0xF8
 const START =  0xFA
@@ -25,6 +26,7 @@ class MidiIO {
     reactor.registerEvent('continue')
     reactor.registerEvent('stop')
     reactor.registerEvent('clock')
+    reactor.registerEvent('control_change')
   }
 
   async initialize({autoconnectInputs = false}) {
@@ -110,33 +112,35 @@ class MidiIO {
       }
 
     }else{
-    // event.timeStamp doesn't seem to work reliably across all
-    // apps and controllers (sometimes it isn't set, sometimes it doesn't
-    // change between notes). Use the performance now timing, unless it exists.
-    let timeStampOffset;
+      // event.timeStamp doesn't seem to work reliably across all
+      // apps and controllers (sometimes it isn't set, sometimes it doesn't
+      // change between notes). Use the performance now timing, unless it exists.
+      let timeStampOffset;
       if (event.timeStamp !== undefined && event.timeStamp !== 0) {
         timeStampOffset = event.timeStamp;
       } else {
         timeStampOffset = performance.now();
       }
-      const timeStamp = timeStampOffset + performance.timing.navigationStart;
+      const timeStamp = timeStampOffset + performance.timing.navigationStart
 
 
-      const cmd = event.data[0] >> 4;
-      const pitch = event.data[1];
-      const velocity = (event.data.length > 2) ? event.data[2] : 1;
+      const d = event.data
       const device = event.srcElement;
 
-      // Some MIDI controllers don't send a separate NOTE_OFF command.
-      if (cmd === NOTE_OFF || (cmd === NOTE_ON && velocity === 0)) {
-        reactor.dispatchEvent('note_off',{pitch, velocity, timeStamp, device})
-      } else if (cmd === NOTE_ON) {
-        reactor.dispatchEvent('note_on',{pitch, velocity, timeStamp, device})
+      switch (d[0] & 0xF0) {
+        case NOTE_ON:
+          reactor.dispatchEvent((d[1]===0)? 'note_off' : 'note_on',{pitch:d[1], velocity:d[2], timeStamp, device})
+          break;
+        case NOTE_OFF:
+          reactor.dispatchEvent('note_off',{pitch:d[1], velocity:d[2], timeStamp, device})
+          break;
+        case CC:
+          reactor.dispatchEvent('control_change',{cc:d[1], value:d[2], timeStamp, device})
+          break;
+        default:
+
       }
     }
-
-
-
 
   }
 
@@ -146,6 +150,10 @@ class MidiIO {
 
   onNoteOff = (callback) =>{
     reactor.addEventListener('note_off', callback)
+  }
+
+  onCC = (callback) =>{
+    reactor.addEventListener('control_change', callback)
   }
 
   onDevicesChanged = (callback) =>{
@@ -163,12 +171,6 @@ class MidiIO {
   }
   onClock = (callback) =>{
     reactor.addEventListener('clock', callback)
-  }
-
-
-  sendNote = (device, note, time,duration) =>{
-    //device.send([0x90, note.pitch,note.velocity],time)
-    //device.send([0x80, note.pitch,note.velocity],time)
   }
 
   getInputById = (id) =>{

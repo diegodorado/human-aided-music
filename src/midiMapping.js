@@ -63,3 +63,13 @@ export const reverseMidiMapping = new Map([
 ]);
 
 export const midiMapping = [36, 38, 42, 46, 41, 43, 45, 49, 51]
+
+export const normalizeNote = (pitch) => {
+  const idx = reverseMidiMapping.get(pitch)
+
+  if(idx===undefined)
+    return pitch
+  else
+    return midiMapping[idx]
+  
+}

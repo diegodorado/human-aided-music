@@ -48,5 +48,8 @@ module.exports = {
   devServer: {
     contentBase: './public'
   },
+  node: {
+    dgram: 'empty',
+  },
   devtool: 'source-map'
 };

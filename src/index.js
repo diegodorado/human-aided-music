@@ -4,9 +4,9 @@ import Tone from 'tone'
 import gWorker from './generate.worker.js'
 import MidiIO from "./MidiIO"
 import Recorder from "./Recorder"
-//import DrumKit from "./DrumKit"
+// import DrumKit from "./DrumKit"
 import DrumKit from "./MockDrumKit"
-//import MonoBass from "./MonoBass"
+// import MonoBass from "./MonoBass"
 import MonoBass from "./MockMonoBass"
 import {setupGUI,onMidiDevicesChanged} from './GUI'
 import StartAudioContext from 'startaudiocontext'
@@ -15,6 +15,12 @@ import { setClickVolume, changeClickActive} from './Click'
 import {setupKeyboard} from './Keyboard'
 import {setupStats,beginMs, endMs } from './Stats'
 import {ns_strech} from "./ns_utils"
+
+import {normalizeNote} from "./midiMapping"
+
+import OSC from 'osc-js'
+
+
 
 
 const stats = document.getElementById('stats')
@@ -35,7 +41,7 @@ const options = {
   subdivisions: 8,
   measures: 8,
   steps: 8*16,
-  interpolation: 1,
+  interpolation: 4,
   reactiveness: 0.5
 }
 
@@ -74,6 +80,48 @@ const setTempo = (qpm) =>{
     options.qpm = qpm
   }
 }
+
+
+
+const wsOptions = {
+  host: 'localhost',
+  port: 40000,
+  secure: false,
+}
+const osc = new OSC({
+  discardLateMessages: false,
+  plugin: new OSC.WebsocketClientPlugin(wsOptions)
+})
+osc.open()
+
+osc.on('/1/fader1', msg => options.temperature = msg.args[0]*2)
+osc.on('/1/fader2', msg => options.subdivisions = Math.pow(2,Math.round(msg.args[0]*(4-2)+2)) )
+osc.on('/1/fader3', msg => options.interpolation = Math.round(msg.args[0]*(16-1)+1) )
+osc.on('/1/fader4', msg => options.reactiveness = msg.args[0])
+osc.on('/1/fader5', msg => setTempo(Math.round(msg.args[0]*(130-70)+70)))
+osc.on('/1/toggle1', msg => options.quantize = !!msg.args[0])
+
+
+let prev_input = ''
+osc.on('/1/toggle3', msg => {
+  if (prev_input==='' || !msg.args[0]){
+    prev_input = options.input
+    options.input = 'keyboard'
+  }else{
+    options.input = prev_input
+  }
+})
+
+let prev_output = ''
+osc.on('/1/toggle4', msg => {
+  if (prev_output==='' || !msg.args[0]){
+    prev_output = options.output
+    options.output = 'none'
+  }else{
+    options.output = prev_output
+  }
+})
+
 
 
 setupGUI(guiEl, options, monoBass,DrumKit, changeClickActive, setClickVolume, setTempo)
@@ -130,6 +178,7 @@ const updateDrums = (time) => {
 
 let tick = 0
 //a single schedule!
+// fixme: we are missings steps at updateOrcaVis
 Tone.Transport.scheduleRepeat( (time) => {
 	Tone.Draw.schedule(() =>updateOrcaVis(tick), time)
   if((tick%(options.steps/options.subdivisions))===0){
@@ -174,7 +223,12 @@ midiIO.initialize({autoconnectInputs:true}).then(() => {
     }
   })
 
+  midiIO.onCC((data) => {
+    //console.log(data)
+  })
+
   midiIO.onClock((ev) => {
+    return //disabled for now
     if (options.input === ev.target.id || options.input === 'all'){
       if (midiClockCounter % 6 === 0) {
         const diff = ev.timeStamp - lastMidiClockAt
@@ -212,13 +266,19 @@ const playDrum = (note,time) =>{
     DrumKit.play(note, time)
   }else{
     const device = midiIO.getOutputById(options.output)
-    const length = (note.endTime - note.startTime) * 1000 // in ms.
-    // ensure defaults
-    note.velocity |= 100
-    // send note on and delayed note off
-    device.send([0x90, note.pitch,note.velocity])
-    device.send([0x80, note.pitch,0]
-      ,window.performance.now() + length)
+    if(device){
+      const length = (note.endTime - note.startTime) * 1000 // in ms.
+
+      // adjust pitch to match default midi mapping
+      note.pitch = normalizeNote(note.pitch)
+
+      // ensure defaults
+      note.velocity |= 100
+      // send note on and delayed note off
+      device.send([0x90, note.pitch,note.velocity])
+      device.send([0x80, note.pitch,0]
+        ,window.performance.now() + length)
+    }
   }
 }
 
